@@ -35,7 +35,7 @@ say "Installing HexaHost on ${PRETTY_NAME:-this system} → $APP_DIR"
 # ── packages ────────────────────────────────────────────────────────
 say "Installing packages (git, curl, wireguard, bird2)…"
 apt-get update -qq
-apt-get install -y -qq git curl ca-certificates wireguard-tools bird2 >/dev/null
+apt-get install -y -qq git curl ca-certificates iproute2 wireguard-tools bird2 >/dev/null
 
 node_major() { command -v node >/dev/null && node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0; }
 if [ "$(node_major)" -lt 18 ]; then

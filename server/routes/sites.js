@@ -5,6 +5,7 @@ const { requireAuth } = require('../auth');
 const config = require('../config');
 const deployer = require('../services/deployer');
 const procman = require('../services/procman');
+const ipam = require('../services/ipam');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -74,6 +75,7 @@ router.post('/', (req, res) => {
       JSON.stringify(env_vars && typeof env_vars === 'object' ? env_vars : {}),
       siteType === 'node' ? nextAppPort() : null
     );
+  ipam.assignToSite(r.lastInsertRowid); // dedicated IPv6 from the pool, if configured
   const site = db.prepare('SELECT * FROM sites WHERE id = ?').get(r.lastInsertRowid);
   logActivity(req.user.id, 'site.create', `"${site.name}" (${site.type})`);
   if (site.repo_url) deployer.deploy(site.id, 'manual');
@@ -162,6 +164,7 @@ router.delete('/:id', (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;
   procman.stop(site.id);
+  if (site.ipv6_addr) ipam.removeAddr(site.ipv6_addr);
   db.prepare('DELETE FROM sites WHERE id = ?').run(site.id);
   require('fs').rmSync(require('path').join(config.sitesDir, String(site.id)), { recursive: true, force: true });
   logActivity(req.user.id, 'site.delete', `"${site.name}"`);

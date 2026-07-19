@@ -3,6 +3,7 @@ const { db, logActivity } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
 const wg = require('../services/wireguard');
 const bird = require('../services/bird');
+const ipam = require('../services/ipam');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -34,6 +35,7 @@ router.get('/', (req, res) => {
       public_key: s.public_key, endpoint: s.endpoint, listen_port: s.listen_port,
       tunnel_v4: s.tunnel_v4, tunnel_v6: s.tunnel_v6, dns: s.dns,
       server_asn: s.server_asn || '',
+      site_v6_pool: s.site_v6_pool || '', site_v6_iface: s.site_v6_iface || '',
     },
     peers: peers.map(p => ({ ...peerView(p), owner_email: p.owner_email })),
     bgp,
@@ -160,13 +162,21 @@ router.patch('/server', requireAdmin, (req, res) => {
   const port = b.listen_port !== undefined ? parseInt(b.listen_port, 10) : s.listen_port;
   if (isNaN(port) || port < 1 || port > 65535) return res.status(400).json({ error: 'Invalid listen port' });
   if (b.server_asn !== undefined && !wg.validAsn(b.server_asn)) return res.status(400).json({ error: 'Server ASN must look like AS64512 or 64512' });
-  db.prepare('UPDATE wg_settings SET listen_port = ?, endpoint = ?, dns = ?, server_asn = ? WHERE id = 1')
+  if (b.site_v6_pool !== undefined && b.site_v6_pool !== '') {
+    if (!wg.validCidr(b.site_v6_pool, 6)) return res.status(400).json({ error: 'Site IPv6 pool must be a valid IPv6 CIDR, e.g. 2a0e:8f02:f01f:100::/64' });
+    if (parseInt(b.site_v6_pool.split('/')[1], 10) > 124) return res.status(400).json({ error: 'Pool prefix must be /124 or larger to hold site addresses' });
+  }
+  db.prepare('UPDATE wg_settings SET listen_port = ?, endpoint = ?, dns = ?, server_asn = ?, site_v6_pool = ?, site_v6_iface = ? WHERE id = 1')
     .run(port, b.endpoint !== undefined ? b.endpoint : s.endpoint,
       b.dns !== undefined ? b.dns : s.dns,
-      b.server_asn !== undefined ? b.server_asn : s.server_asn);
-  logActivity(req.user.id, 'wg.server.update', `port ${port}${b.server_asn !== undefined ? `, ASN ${b.server_asn || '(cleared)'}` : ''}`);
+      b.server_asn !== undefined ? b.server_asn : s.server_asn,
+      b.site_v6_pool !== undefined ? b.site_v6_pool : (s.site_v6_pool || ''),
+      b.site_v6_iface !== undefined ? b.site_v6_iface : (s.site_v6_iface || ''));
+  logActivity(req.user.id, 'wg.server.update', `port ${port}${b.server_asn !== undefined ? `, ASN ${b.server_asn || '(cleared)'}` : ''}${b.site_v6_pool !== undefined ? `, site pool ${b.site_v6_pool || '(cleared)'}` : ''}`);
+  const assigned = ipam.backfill(); // give existing sites an address right away
+  if (assigned) logActivity(req.user.id, 'site.ipv6', `auto-assigned dedicated IPv6 to ${assigned} existing site(s)`);
   bird.applyLive(() => {});
-  wg.applyLive((result) => res.json({ server: wg.getSettings(), wireguard: result }));
+  wg.applyLive((result) => res.json({ server: wg.getSettings(), wireguard: result, ipv6_assigned: assigned }));
 });
 
 router.get('/server/bird-config', requireAdmin, (req, res) => {

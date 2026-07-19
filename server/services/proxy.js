@@ -6,6 +6,7 @@ const path = require('path');
 const config = require('../config');
 const { db } = require('../db');
 const procman = require('./procman');
+const { normalizeV6 } = require('./ipam');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
@@ -20,14 +21,28 @@ const MIME = {
   '.map': 'application/json',
 };
 
-function findSiteByHost(host) {
-  if (!host) return null;
-  const hostname = host.split(':')[0].toLowerCase();
+function findSite(req) {
   const sites = db.prepare("SELECT * FROM sites WHERE status IN ('live','deploying')").all();
+
+  // 1. dedicated IPv6: match the address the client actually connected to
+  const local = normalizeV6(req.socket.localAddress);
+  if (local) {
+    for (const site of sites) {
+      if (site.ipv6_addr && normalizeV6(site.ipv6_addr) === local) return site;
+    }
+  }
+
+  // 2. Host header (custom domains + free <slug>.<host> subdomains)
+  const host = req.headers.host;
+  if (!host) return null;
+  // "[2a0e::1]:8080" → "2a0e::1", "example.com:8080" → "example.com"
+  const bracket = host.match(/^\[([^\]]+)\]/);
+  const hostname = (bracket ? bracket[1] : host.split(':')[0]).toLowerCase();
   for (const site of sites) {
     const domains = JSON.parse(site.domains || '[]');
     if (domains.some(d => d.toLowerCase() === hostname)) return site;
     if (hostname === `${site.slug}.${config.publicHost.toLowerCase()}`) return site;
+    if (site.ipv6_addr && normalizeV6(hostname) === normalizeV6(site.ipv6_addr)) return site;
   }
   return null;
 }
@@ -101,7 +116,7 @@ function proxyToApp(site, req, res) {
 
 function createProxyServer() {
   const server = http.createServer((req, res) => {
-    const site = findSiteByHost(req.headers.host);
+    const site = findSite(req);
     if (!site) {
       return errorPage(res, 404, 'No site here', `No site is configured for <b>${(req.headers.host || 'this host').split(':')[0]}</b>.`);
     }
@@ -111,7 +126,7 @@ function createProxyServer() {
 
   // WebSocket passthrough for node apps
   server.on('upgrade', (req, socket) => {
-    const site = findSiteByHost(req.headers.host);
+    const site = findSite(req);
     if (!site || site.type !== 'node') return socket.destroy();
     const upstream = http.request({
       host: '127.0.0.1', port: site.app_port, path: req.url, method: req.method,
@@ -134,4 +149,4 @@ function createProxyServer() {
   return server;
 }
 
-module.exports = { createProxyServer, findSiteByHost };
+module.exports = { createProxyServer, findSite };

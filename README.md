@@ -30,8 +30,15 @@ dashboard with a full admin area.
   secret. Pushes to your chosen branch (default `main`) trigger
   clone → install → build → go-live. Deploy logs for every run. Private repos
   supported via access token.
-- **Built-in edge proxy** — routes by `Host` header. Every site gets a free
-  `<slug>.<your-host>` domain, plus any custom domains you add.
+- **Built-in edge proxy** — routes by `Host` header **and by destination
+  IPv6 address**. Every site gets a free `<slug>.<your-host>` domain, plus any
+  custom domains you add.
+- **IPv6 auto-delegation** — set a *Site IPv6 pool* (a chunk of your own IPv6
+  block routed to this server, e.g. a `/64`) and **every site automatically
+  gets its own dedicated IPv6 address** out of it: allocated on creation,
+  attached to the server's interface, released on deletion, shown in the
+  dashboard. Point AAAA records straight at a site's address — no shared IP,
+  no Host-header dependence.
 - **WireGuard tunnels** — one click creates a peer with generated keys
   (Curve25519 via Node's crypto, no shelling out), a tunnel IPv4 + IPv6, and a
   downloadable `.conf`. Enter **your own IPv6 block** (e.g. `2a0e:xxxx::/48`)
@@ -137,6 +144,23 @@ you're live; `npm start` is the default start command.
 > a valid next-hop for your block (your upstream routes it here, or you announce
 > it from the server). HexaHost handles the tunnel + configs; the upstream
 > arrangement is between you and your transit provider.
+
+## Dedicated IPv6 per site (auto-delegation)
+
+Give websites their own addresses from your block:
+
+1. **Network / VPN → Server settings** (admin) — set *Site IPv6 pool* to a
+   subnet of your block that is routed to this server, e.g.
+   `2a0e:8f02:f01f:100::/64`. (The rest of the block can keep tunneling to
+   your WireGuard peers.)
+2. Every existing site is immediately assigned an address (`::1`, `::2`, …),
+   and every new site gets one automatically at creation. Addresses are
+   attached to the server's default interface via `ip -6 addr` (override the
+   interface in the same settings dialog) and released when a site is deleted.
+3. The edge proxy recognizes the destination address of each connection, so
+   traffic hitting a site's dedicated IPv6 lands on that site even without a
+   matching `Host` header — point `AAAA yoursite.example → 2a0e:…::2` and
+   you're done. The address is shown on the site page with a copy button.
 
 ## Configuration
 

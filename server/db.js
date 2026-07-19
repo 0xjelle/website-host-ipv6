@@ -92,6 +92,9 @@ function addColumn(table, def) {
 addColumn('wg_settings', "server_asn TEXT NOT NULL DEFAULT ''");
 addColumn('wg_peers', 'bgp_enabled INTEGER NOT NULL DEFAULT 0');
 addColumn('wg_peers', 'bird_custom TEXT');
+addColumn('wg_settings', "site_v6_pool TEXT NOT NULL DEFAULT ''");   // IPv6 block sites get addresses from
+addColumn('wg_settings', "site_v6_iface TEXT NOT NULL DEFAULT ''");  // interface to attach them to (auto if empty)
+addColumn('sites', 'ipv6_addr TEXT');
 
 function logActivity(userId, action, detail = '') {
   db.prepare('INSERT INTO activity (user_id, action, detail) VALUES (?, ?, ?)')

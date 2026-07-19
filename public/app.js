@@ -171,6 +171,7 @@
             <div class="s-top"><span class="type-badge ${s.type}">${s.type}</span>
               <span class="s-name">${esc(s.name)}</span>${pill(s.status)}</div>
             <div class="s-domain">${esc(s.domains[0] || s.default_domain)}</div>
+            ${s.ipv6_addr ? `<div class="s-domain" style="color:var(--ink-3)">⬡ ${esc(s.ipv6_addr)}</div>` : ''}
             <div class="s-meta">
               <span>${s.repo_url ? '⎇ ' + esc(s.repo_url.replace(/^https:\/\/(www\.)?/, '').replace(/\.git$/, '')) : 'no repo connected'}</span>
             </div>
@@ -256,6 +257,9 @@
         <div class="card"><h2>Access</h2>
           <div class="kv">
             <span class="k">Default URL</span><span class="v"><a href="http://${esc(site.default_domain)}" target="_blank">http://${esc(site.default_domain)}</a></span>
+            ${site.ipv6_addr ? `<span class="k">Dedicated IPv6</span><span class="v">${esc(site.ipv6_addr)}
+              <button class="cp" style="background:none;border:none;cursor:pointer;color:var(--ink-3)" onclick="_copy('${esc(site.ipv6_addr)}', 'IPv6 copied')" title="copy">⧉</button>
+              <span style="color:var(--ink-3)"> — point your AAAA records here</span></span>` : ''}
             ${domains.map(d => `<span class="k">Custom domain</span><span class="v"><a href="http://${esc(d)}" target="_blank">http://${esc(d)}</a></span>`).join('')}
             ${site.type === 'node' ? `<span class="k">Internal port</span><span class="v">${site.app_port} ${site.process?.running ? `· running ${uptimeStr(site.process.uptimeSec)}` : '· not running'}</span>` : ''}
           </div>
@@ -425,6 +429,7 @@
             <span class="k">Public key</span><span class="v">${esc(server.public_key)}</span>
             <span class="k">Tunnel subnets</span><span class="v">${esc(server.tunnel_v4)} · ${esc(server.tunnel_v6)}</span>
             <span class="k">BGP (BIRD2)</span><span class="v">${server.server_asn ? `AS${esc(server.server_asn.replace(/^AS/i, ''))}${bgp?.available ? ' · daemon running' : ' · daemon not detected'}` : '<span style="color:var(--warn)">server ASN not set — BGP sessions disabled</span>'}</span>
+            <span class="k">Site IPv6 pool</span><span class="v">${server.site_v6_pool ? `${esc(server.site_v6_pool)} — every site auto-gets a dedicated address` : '<span style="color:var(--ink-3)">not set — sites share the server address</span>'}</span>
           </div>
           ${me.role === 'admin' ? `<div style="margin-top:1rem;display:flex;gap:.6rem;flex-wrap:wrap">
             <button class="btn small" id="wgsettings">⚙ Server settings</button>
@@ -562,6 +567,14 @@
           <label class="field"><span class="lbl">Server ASN <span style="font-weight:400">(enables BGP sessions over the tunnels)</span></span>
             <input type="text" name="server_asn" value="${esc(server.server_asn || '')}" placeholder="AS64512">
             <span class="help">The ASN this server speaks BGP as. Peers' sessions peer against it; private range 64512–65534 is fine if you don't have a public one.</span></label>
+          <div class="formrow">
+            <label class="field"><span class="lbl">Site IPv6 pool <span style="font-weight:400">(auto-delegation)</span></span>
+              <input type="text" name="site_v6_pool" value="${esc(server.site_v6_pool || '')}" placeholder="2a0e:8f02:f01f:100::/64">
+              <span class="help">A chunk of your IPv6 block routed to this server. Every site automatically gets its own address from it.</span></label>
+            <label class="field"><span class="lbl">Attach to interface <span style="font-weight:400">(optional)</span></span>
+              <input type="text" name="site_v6_iface" value="${esc(server.site_v6_iface || '')}" placeholder="auto-detect">
+              <span class="help">Interface the site addresses are added to. Leave empty to use the default route's interface.</span></label>
+          </div>
           <div class="actions">
             <button type="button" class="btn" id="cancel">Cancel</button>
             <button type="submit" class="btn primary">Save</button>

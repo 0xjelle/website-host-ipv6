@@ -32,9 +32,10 @@ app.use((err, req, res, next) => {
 });
 
 // ── boot ────────────────────────────────────────────────────────────
-wg.getSettings();                       // ensure server keys exist
-wg.syncToDisk();                        // write wg0.conf
-require('./services/bird').writeConf(); // write bird.conf (BGP over tunnel)
+wg.getSettings();                        // ensure server keys exist
+wg.syncToDisk();                         // write wg0.conf
+require('./services/bird').writeConf();  // write bird.conf (BGP over tunnel)
+require('./services/ipam').applyAll();   // re-attach dedicated site IPv6 addresses
 
 // Resume node apps that were live before the restart
 for (const site of db.prepare("SELECT * FROM sites WHERE type = 'node' AND status = 'live'").all()) {

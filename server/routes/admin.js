@@ -4,9 +4,35 @@ const { execFile } = require('child_process');
 const { db, logActivity } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
 const procman = require('../services/procman');
+const metrics = require('../services/metrics');
 
 const router = express.Router();
 router.use(requireAuth);
+
+// ── chart data (scoped: users see their own sites; admins see all) ──
+router.get('/metrics', (req, res) => {
+  const admin = req.user.role === 'admin';
+  const siteIds = admin ? null : db.prepare('SELECT id FROM sites WHERE user_id = ?').all(req.user.id).map(r => r.id);
+  const siteQ = req.query.site ? parseInt(req.query.site, 10) : null;
+  let trafficIds = siteIds;
+  if (siteQ) {
+    const site = db.prepare('SELECT id, user_id FROM sites WHERE id = ?').get(siteQ);
+    if (!site || (!admin && site.user_id !== req.user.id)) return res.status(403).json({ error: 'Not your site' });
+    trafficIds = [site.id];
+  }
+  const deploys = db.prepare(`
+    SELECT date(started_at) AS day, status, COUNT(*) AS n
+    FROM deployments
+    WHERE started_at >= datetime('now', '-14 days')
+      ${admin ? '' : `AND site_id IN (SELECT id FROM sites WHERE user_id = ${req.user.id})`}
+      ${siteQ ? `AND site_id = ${siteQ}` : ''}
+    GROUP BY day, status ORDER BY day`).all();
+  res.json({
+    traffic: metrics.trafficSeries(trafficIds, 60),
+    deploys,
+    system: admin ? metrics.systemSeries() : null,
+  });
+});
 
 // ── overview stats (any signed-in user; scoped to their data) ───────
 router.get('/overview', (req, res) => {

@@ -60,6 +60,113 @@
     return back;
   }
 
+  // ── charts (SVG, no deps) ───────────────────────────────────────
+  const fmtTime = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  // Smooth single-series line/area chart with crosshair tooltip.
+  function lineChart(el, points, { color = 'var(--accent)', unit = '', maxY = null, label = '' } = {}) {
+    if (!points || points.length < 2) {
+      el.innerHTML = `<div class="chart-empty">No data yet — collecting…</div>`;
+      return;
+    }
+    const W = 640, H = 160, PL = 34, PB = 18, PT = 8, PR = 6;
+    const xs = points.map(p => p.t), ys = points.map(p => p.v);
+    const x0 = xs[0], x1 = xs[xs.length - 1];
+    const yMax = Math.max(maxY ?? 0, Math.max(...ys) * 1.15, 1);
+    const X = (t) => PL + (t - x0) / (x1 - x0 || 1) * (W - PL - PR);
+    const Y = (v) => PT + (1 - v / yMax) * (H - PT - PB);
+    const path = points.map((p, i) => `${i ? 'L' : 'M'}${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`).join('');
+    const area = `${path}L${X(x1).toFixed(1)},${Y(0)}L${X(x0).toFixed(1)},${Y(0)}Z`;
+    const gridY = [0.5, 1].map(f => yMax * f);
+    el.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="${esc(label)}">
+        ${gridY.map(v => `<line x1="${PL}" y1="${Y(v)}" x2="${W - PR}" y2="${Y(v)}" class="grid"/>
+          <text x="${PL - 6}" y="${Y(v) + 3}" class="axis" text-anchor="end">${v >= 10 ? Math.round(v) : v.toFixed(1)}</text>`).join('')}
+        <line x1="${PL}" y1="${Y(0)}" x2="${W - PR}" y2="${Y(0)}" class="grid base"/>
+        <text x="${PL}" y="${H - 4}" class="axis">${fmtTime(x0)}</text>
+        <text x="${W - PR}" y="${H - 4}" class="axis" text-anchor="end">${fmtTime(x1)}</text>
+        <path d="${area}" fill="${color}" opacity="0.08"/>
+        <path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
+        <line class="xhair" y1="${PT}" y2="${Y(0)}" style="display:none"/>
+        <circle class="dot" r="3.5" fill="${color}" stroke="var(--panel)" stroke-width="2" style="display:none"/>
+      </svg>
+      <div class="chart-tip" style="display:none"></div>`;
+    const svg = el.querySelector('svg'), tip = el.querySelector('.chart-tip');
+    const xhair = svg.querySelector('.xhair'), dot = svg.querySelector('.dot');
+    svg.addEventListener('mousemove', (e) => {
+      const r = svg.getBoundingClientRect();
+      const t = x0 + ((e.clientX - r.left) / r.width * W - PL) / (W - PL - PR) * (x1 - x0);
+      let best = points[0];
+      for (const p of points) if (Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+      xhair.setAttribute('x1', X(best.t)); xhair.setAttribute('x2', X(best.t));
+      dot.setAttribute('cx', X(best.t)); dot.setAttribute('cy', Y(best.v));
+      xhair.style.display = dot.style.display = '';
+      tip.style.display = '';
+      tip.textContent = `${fmtTime(best.t)} · ${best.v}${unit}`;
+      const px = (X(best.t) / W) * r.width;
+      tip.style.left = Math.min(Math.max(px, 40), r.width - 60) + 'px';
+    });
+    svg.addEventListener('mouseleave', () => { xhair.style.display = dot.style.display = tip.style.display = 'none'; });
+  }
+
+  // Stacked bar chart for deployments/day (status colors + legend).
+  function deployBars(el, days) {
+    if (!days.length || days.every(d => !d.success && !d.failed)) {
+      el.innerHTML = `<div class="chart-empty">No deployments in the last 14 days.</div>`;
+      return;
+    }
+    const W = 640, H = 160, PL = 26, PB = 20, PT = 8, PR = 6;
+    const max = Math.max(...days.map(d => d.success + d.failed), 1);
+    const bw = (W - PL - PR) / days.length;
+    const Y = (v) => PT + (1 - v / max) * (H - PT - PB);
+    const bars = days.map((d, i) => {
+      const x = PL + i * bw + bw * 0.18, w = bw * 0.64;
+      const hS = (H - PT - PB) * d.success / max, hF = (H - PT - PB) * d.failed / max;
+      let y = H - PB;
+      let out = '';
+      if (d.success) { y -= hS; out += `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(hS - 1, 1)}" rx="3" fill="var(--good)" opacity=".85"/>`; }
+      if (d.failed) { y -= hF + (d.success ? 2 : 0); out += `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(hF - 1, 1)}" rx="3" fill="var(--bad)" opacity=".85"/>`; }
+      return `<g class="bar" data-i="${i}">${out}<rect x="${PL + i * bw}" y="${PT}" width="${bw}" height="${H - PT - PB}" fill="transparent"/></g>`;
+    }).join('');
+    el.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        <line x1="${PL}" y1="${Y(max)}" x2="${W - PR}" y2="${Y(max)}" class="grid"/>
+        <text x="${PL - 5}" y="${Y(max) + 3}" class="axis" text-anchor="end">${max}</text>
+        <line x1="${PL}" y1="${H - PB}" x2="${W - PR}" y2="${H - PB}" class="grid base"/>
+        <text x="${PL}" y="${H - 5}" class="axis">${esc(days[0].label.slice(5))}</text>
+        <text x="${W - PR}" y="${H - 5}" class="axis" text-anchor="end">${esc(days[days.length - 1].label.slice(5))}</text>
+        ${bars}
+      </svg>
+      <div class="chart-legend">
+        <span><span class="swatch" style="background:var(--good)"></span>success</span>
+        <span><span class="swatch" style="background:var(--bad)"></span>failed</span>
+      </div>
+      <div class="chart-tip" style="display:none"></div>`;
+    const tip = el.querySelector('.chart-tip'), svg = el.querySelector('svg');
+    svg.querySelectorAll('.bar').forEach(g => {
+      g.addEventListener('mousemove', (e) => {
+        const d = days[+g.dataset.i];
+        const r = svg.getBoundingClientRect();
+        tip.style.display = '';
+        tip.textContent = `${d.label.slice(5)} · ${d.success} ok${d.failed ? ` · ${d.failed} failed` : ''}`;
+        tip.style.left = Math.min(Math.max(e.clientX - r.left, 50), r.width - 60) + 'px';
+      });
+      g.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+    });
+  }
+
+  // Fold API deploy rows into a continuous 14-day series
+  function deployDays(rows) {
+    const by = {};
+    for (const r of rows) { by[r.day] = by[r.day] || { success: 0, failed: 0 }; by[r.day][r.status === 'success' ? 'success' : 'failed'] += r.n; }
+    const days = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10);
+      days.push({ label: d, success: by[d]?.success || 0, failed: by[d]?.failed || 0 });
+    }
+    return days;
+  }
+
   // ── auth screens ────────────────────────────────────────────────
   function renderAuth(hasUsers) {
     let mode = hasUsers ? 'login' : 'register';
@@ -132,7 +239,7 @@
 
   // ── overview page ───────────────────────────────────────────────
   async function pageOverview() {
-    const { stats, recent } = await api('/overview');
+    const [{ stats, recent }, m] = await Promise.all([api('/overview'), api('/metrics').catch(() => null)]);
     const c = h(`
       <div>
         <div class="page-head"><h1>Overview</h1>
@@ -142,6 +249,12 @@
           <div class="tile"><div class="t-label">Live now</div><div class="t-value">${stats.liveSites}</div><div class="t-note">serving traffic</div></div>
           <div class="tile"><div class="t-label">Deployments</div><div class="t-value">${stats.deployments}</div><div class="t-note">all time</div></div>
           <div class="tile"><div class="t-label">WireGuard peers</div><div class="t-value">${stats.peers}</div><div class="t-note">tunnels configured</div></div>
+        </div>
+        <div class="chart-row">
+          <div class="card"><h2>Traffic <span class="hint">requests/min · last hour</span></h2>
+            <div class="chart" id="ch-traffic"></div></div>
+          <div class="card"><h2>Deployments <span class="hint">last 14 days</span></h2>
+            <div class="chart" id="ch-deploys"></div></div>
         </div>
         <div class="card">
           <h2>Recent deployments <span class="hint">latest 8</span></h2>
@@ -156,7 +269,11 @@
           </table></div>` : `<div class="empty"><div class="big">🚀</div>No deployments yet.<br>Create a site and connect a GitHub repository to get going.</div>`}
         </div>
       </div>`);
-    shell('overview', c);
+    const main = shell('overview', c);
+    if (m) {
+      lineChart(main.querySelector('#ch-traffic'), m.traffic.map(p => ({ t: p.t, v: p.n })), { unit: ' req', label: 'Requests per minute' });
+      deployBars(main.querySelector('#ch-deploys'), deployDays(m.deploys));
+    }
   }
 
   // ── sites list ──────────────────────────────────────────────────
@@ -294,6 +411,11 @@
     const body = main.querySelector('#tabbody');
 
     if (tab === 'deploys') {
+      body.appendChild(h(`<div class="card"><h2>Traffic <span class="hint">requests/min · last hour</span></h2>
+        <div class="chart" id="ch-site-traffic"></div></div>`));
+      api(`/metrics?site=${id}`).then(m =>
+        lineChart(body.querySelector('#ch-site-traffic'), m.traffic.map(p => ({ t: p.t, v: p.n })), { unit: ' req', label: 'Requests per minute' })
+      ).catch(() => {});
       body.appendChild(h(`<div class="card">
         <h2>Deployments</h2>
         ${deployments.length ? `<div class="tbl-scroll"><table class="tbl">
@@ -689,7 +811,7 @@
 
   // ── admin: system ───────────────────────────────────────────────
   async function pageSystem() {
-    const s = await api('/system');
+    const [s, m] = await Promise.all([api('/system'), api('/metrics').catch(() => null)]);
     const memPct = Math.round(s.memUsedMB / s.memTotalMB * 100);
     const diskPct = s.disk ? Math.round(s.disk.usedMB / s.disk.totalMB * 100) : null;
     const loadPct = Math.min(100, Math.round(s.load1 / s.cpus * 100));
@@ -706,13 +828,23 @@
           <div class="tile"><div class="t-label">CPU cores</div><div class="t-value">${s.cpus}</div></div>
           <div class="tile"><div class="t-label">Load (1m)</div><div class="t-value">${s.load1.toFixed(2)}</div><div class="t-note">${s.load5.toFixed(2)} / ${s.load15.toFixed(2)} (5m/15m)</div></div>
         </div>
-        <div class="card"><h2>Resources</h2>
+        <div class="chart-row">
+          <div class="card"><h2>CPU load <span class="hint">% of ${s.cpus} cores · last hour</span></h2>
+            <div class="chart" id="ch-cpu"></div></div>
+          <div class="card"><h2>Memory <span class="hint">% used · last hour</span></h2>
+            <div class="chart" id="ch-mem"></div></div>
+        </div>
+        <div class="card"><h2>Resources <span class="hint">right now</span></h2>
           ${meter('Memory', `${(s.memUsedMB / 1024).toFixed(1)} / ${(s.memTotalMB / 1024).toFixed(1)} GB (${memPct}%)`, memPct)}
           ${meter('CPU load vs cores', `${s.load1.toFixed(2)} / ${s.cpus} cores (${loadPct}%)`, loadPct)}
           ${diskPct !== null ? meter('Disk (/)', `${(s.disk.usedMB / 1024).toFixed(1)} / ${(s.disk.totalMB / 1024).toFixed(1)} GB (${diskPct}%)`, diskPct) : ''}
         </div>
       </div>`);
-    shell('admin/system', c);
+    const main = shell('admin/system', c);
+    if (m?.system) {
+      lineChart(main.querySelector('#ch-cpu'), m.system.map(p => ({ t: p.t, v: p.loadPct })), { unit: '%', maxY: 100, color: 'var(--accent)', label: 'CPU load percent' });
+      lineChart(main.querySelector('#ch-mem'), m.system.map(p => ({ t: p.t, v: p.memPct })), { unit: '%', maxY: 100, color: 'var(--accent-2)', label: 'Memory percent' });
+    }
   }
 
   // ── admin: activity ─────────────────────────────────────────────

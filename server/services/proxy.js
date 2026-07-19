@@ -7,6 +7,7 @@ const config = require('../config');
 const { db } = require('../db');
 const procman = require('./procman');
 const { normalizeV6 } = require('./ipam');
+const metrics = require('./metrics');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
@@ -120,6 +121,7 @@ function createProxyServer() {
     if (!site) {
       return errorPage(res, 404, 'No site here', `No site is configured for <b>${(req.headers.host || 'this host').split(':')[0]}</b>.`);
     }
+    metrics.hit(site.id);
     if (site.type === 'node') return proxyToApp(site, req, res);
     return serveStatic(site, req, res);
   });

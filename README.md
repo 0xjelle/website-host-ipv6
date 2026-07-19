@@ -46,13 +46,34 @@ dashboard with a full admin area.
 
 ## Quick start
 
-### Bare metal (Debian/Ubuntu)
+### Ubuntu Server (one command)
+
+On a fresh Ubuntu Server 20.04/22.04/24.04 (or Debian 11+), as root:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/0xjelle/website-host-ipv6/main/scripts/install.sh | sudo bash
 ```
 
-or manually:
+The installer:
+
+- installs git, WireGuard tools and Node.js 22 (via NodeSource) if missing
+- clones HexaHost to `/opt/hexahost` and installs dependencies
+- writes `/opt/hexahost/.env` with a random `JWT_SECRET` and your server's IP
+  as `PUBLIC_HOST` (override: `PUBLIC_HOST=host.example.com` before the command)
+- installs + starts the `hexahost` systemd service, enables `wg-quick@wg0`
+  against the generated WireGuard config, enables IPv4/IPv6 forwarding
+- opens ports 80, 3000 and 51820/udp if ufw is active
+
+Then open `http://your-server:3000` — the first account you register becomes
+the admin. Useful afterwards:
+
+```bash
+journalctl -u hexahost -f        # live logs
+systemctl restart hexahost       # after editing /opt/hexahost/.env
+cd /opt/hexahost && git pull && npm install --omit=dev && systemctl restart hexahost   # update
+```
+
+### Manual (any Linux with Node ≥ 18)
 
 ```bash
 git clone https://github.com/0xjelle/website-host-ipv6 && cd website-host-ipv6

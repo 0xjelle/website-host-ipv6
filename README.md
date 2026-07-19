@@ -1,10 +1,22 @@
 # ⬡ Hosting
 
 **A self-hosted, IPv6-first hosting platform.** Host static HTML sites and Node.js
-apps, auto-deploy them from GitHub on every push to `main`, and tunnel **your own
-IPv6 block / IPv4 space** to yourself over WireGuard — with a BGP config generator
-for announcing your prefix from your ASN. All managed from a pretty dark-mode
-dashboard with a full admin area.
+apps, auto-deploy them from GitHub on every push to `main`, and bring **your own
+IPv6 block + ASN** — either by tunneling clients to this server, or by connecting
+the server out to a BGP tunnel provider like **BGPTunnel (iFog)**. Every site can
+get its own dedicated IPv6 address from your block, and everything is managed
+from a dark-mode dashboard with a full admin area.
+
+**Contents:** [Features](#features) · [Quick start](#quick-start) ·
+[Sites from GitHub](#hosting-a-site-from-github) ·
+[Your IPv6 block + ASN](#your-ipv6-block--asn-over-wireguard) ·
+[Uplink / BGPTunnel](#uplink--using-bgptunnel-ifog-or-another-provider) ·
+[IPv6 per site](#dedicated-ipv6-per-site-auto-delegation) ·
+[Configuration](#configuration)
+
+**Branches:** `main` is stable; `beta` carries the newest dashboard work
+(extra charts, UI polish) — install it with `git clone -b beta …` or switch an
+existing install with `git -C /opt/hosting checkout beta && systemctl restart hosting`.
 
 ```
                         ┌────────────────────────────────────────────┐

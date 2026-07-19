@@ -65,7 +65,7 @@ router.get('/peers/:id/config', (req, res) => {
   const peer = ownPeer(req, res);
   if (!peer) return;
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="hexahost-${peer.name.replace(/[^a-zA-Z0-9-]/g, '_')}.conf"`);
+  res.setHeader('Content-Disposition', `attachment; filename="hosting-${peer.name.replace(/[^a-zA-Z0-9-]/g, '_')}.conf"`);
   res.send(wg.renderClientConf(peer));
 });
 

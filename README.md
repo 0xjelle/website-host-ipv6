@@ -1,4 +1,4 @@
-# ⬡ HexaHost
+# ⬡ Hosting
 
 **A self-hosted, IPv6-first hosting platform.** Host static HTML sites and Node.js
 apps, auto-deploy them from GitHub on every push to `main`, and tunnel **your own
@@ -8,7 +8,7 @@ dashboard with a full admin area.
 
 ```
                         ┌────────────────────────────────────────────┐
-   git push → webhook   │                 HexaHost                   │
+   git push → webhook   │                  Hosting                   │
   ──────────────────►   │                                            │
                         │  ┌──────────┐   ┌───────────────────────┐  │
    http (Host header)   │  │ Dashboard│   │ Edge proxy :80        │  │
@@ -26,7 +26,7 @@ dashboard with a full admin area.
 
 - **Sites** — static (HTML/CSS/JS, optional build step like `npm run build`) and
   **Node.js apps** (supervised processes with auto-restart, env vars, runtime logs).
-- **GitHub auto-deploy** — connect any repo; HexaHost gives you a webhook URL +
+- **GitHub auto-deploy** — connect any repo; Hosting gives you a webhook URL +
   secret. Pushes to your chosen branch (default `main`) trigger
   clone → install → build → go-live. Deploy logs for every run. Private repos
   supported via access token.
@@ -67,10 +67,10 @@ curl -fsSL https://raw.githubusercontent.com/0xjelle/website-host-ipv6/main/scri
 The installer:
 
 - installs git, WireGuard tools and Node.js 22 (via NodeSource) if missing
-- clones HexaHost to `/opt/hexahost` and installs dependencies
-- writes `/opt/hexahost/.env` with a random `JWT_SECRET` and your server's IP
+- clones Hosting to `/opt/hosting` and installs dependencies
+- writes `/opt/hosting/.env` with a random `JWT_SECRET` and your server's IP
   as `PUBLIC_HOST` (override: `PUBLIC_HOST=host.example.com` before the command)
-- installs + starts the `hexahost` systemd service, enables `wg-quick@wg0`
+- installs + starts the `hosting` systemd service, enables `wg-quick@wg0`
   against the generated WireGuard config, enables IPv4/IPv6 forwarding
 - opens ports 80, 3000 and 51820/udp if ufw is active
 
@@ -78,9 +78,9 @@ Then open `http://your-server:3000` — the first account you register becomes
 the admin. Useful afterwards:
 
 ```bash
-journalctl -u hexahost -f        # live logs
-systemctl restart hexahost       # after editing /opt/hexahost/.env
-cd /opt/hexahost && git pull && npm install --omit=dev && systemctl restart hexahost   # update
+journalctl -u hosting -f        # live logs
+systemctl restart hosting       # after editing /opt/hosting/.env
+cd /opt/hosting && git pull && npm install --omit=dev && systemctl restart hosting   # update
 ```
 
 ### Manual (any Linux with Node ≥ 18)
@@ -106,7 +106,7 @@ Dashboard on `:3000`, public sites on `:80`, WireGuard on `:51820/udp`.
 
 1. **Sites → New site**, pick *Static* or *Node.js*, paste your repo URL
    (`https://github.com/you/repo`), branch `main`.
-2. HexaHost deploys immediately, then shows a **Payload URL + Secret** in the
+2. Hosting deploys immediately, then shows a **Payload URL + Secret** in the
    site's *GitHub* tab.
 3. In GitHub: *Settings → Webhooks → Add webhook* — paste both, content type
    `application/json`, just the push event.
@@ -120,21 +120,21 @@ you're live; `npm start` is the default start command.
 
 1. **Network / VPN → New peer** — name it, and optionally enter your IPv6 prefix
    (e.g. `2a0e:8f02:f01f::/48`), extra IPv4 CIDR, and ASN.
-2. Download the generated `.conf` → `wg-quick up ./hexahost-peer.conf` (or import
+2. Download the generated `.conf` → `wg-quick up ./hosting-peer.conf` (or import
    into any WireGuard app).
 3. The server config (`data/wireguard/wg0.conf`) lists your prefix in
    `AllowedIPs`, so the whole block is routed down your tunnel. If `wg` is
-   installed, HexaHost applies changes live via `wg syncconf`; otherwise the
+   installed, Hosting applies changes live via `wg syncconf`; otherwise the
    config is written to disk for `wg-quick@wg0`.
 4. **BGP over the tunnel** — hit the peer's **BGP** button:
-   - Toggle *Enable server-side BGP session*: HexaHost runs **BIRD2 on the
+   - Toggle *Enable server-side BGP session*: Hosting runs **BIRD2 on the
      server** with a session against your tunnel address (your ASN ↔ the
      server ASN set in *Server settings*). Import filters accept **only your
      registered prefixes**; accepted routes are exported to the kernel so
      traffic follows your announcement.
    - Download the ready-made **bird.conf for your side** — it originates your
      prefixes from your ASN and peers with the server over the tunnel. Bring
-     WireGuard up, `bird -c hexahost-bird.conf`, and the session establishes.
+     WireGuard up, `bird -c hosting-bird.conf`, and the session establishes.
    - Or **upload your own BIRD config** (paste or file) — it's parse-checked
      with `bird -p` before being included, and applied live via
      `birdc configure`. Session state (Established/Idle/…) shows in the
@@ -142,7 +142,7 @@ you're live; `npm start` is the default start command.
 
 > Routing a public prefix end-to-end also requires that this server is actually
 > a valid next-hop for your block (your upstream routes it here, or you announce
-> it from the server). HexaHost handles the tunnel + configs; the upstream
+> it from the server). Hosting handles the tunnel + configs; the upstream
 > arrangement is between you and your transit provider.
 
 ## Dedicated IPv6 per site (auto-delegation)
@@ -189,5 +189,5 @@ server/
   routes/             auth · sites · webhooks · wireguard · admin
   services/           deployer · procman · proxy · wireguard
 public/               dashboard SPA (index.html, app.css, app.js)
-scripts/              install.sh · hexahost.service
+scripts/              install.sh · hosting.service
 ```

@@ -1,6 +1,6 @@
 // Server-side BGP over the WireGuard tunnel, powered by BIRD2.
 //
-// HexaHost renders a bird.conf with one BGP session per BGP-enabled peer
+// Hosting renders a bird.conf with one BGP session per BGP-enabled peer
 // (neighbor = the peer's tunnel address, over wg0). Import filters only
 // accept the prefixes registered for that peer, and accepted routes are
 // exported to the kernel so traffic follows the announcement. Peers can
@@ -32,7 +32,7 @@ function renderConf() {
   const serverV6 = s.tunnel_v6.split('/')[0];
   const serverV4 = s.tunnel_v4.split('/')[0];
 
-  let conf = `# HexaHost BIRD2 config — generated ${new Date().toISOString()}
+  let conf = `# Hosting BIRD2 config — generated ${new Date().toISOString()}
 # BGP sessions run over the WireGuard tunnel (wg0).
 router id ${routerId};
 log syslog all;
@@ -66,7 +66,7 @@ protocol kernel kernel4 {
   reject;
 }
 protocol bgp hx_peer${p.id}_v6 {
-  description "HexaHost peer ${p.id}: ${p.name.replace(/"/g, "'")} (v6)";
+  description "Hosting peer ${p.id}: ${p.name.replace(/"/g, "'")} (v6)";
   local ${serverV6} as ${serverAsn};
   neighbor ${peerV6} as ${peerAsn};
   hold time 90;
@@ -80,7 +80,7 @@ protocol bgp hx_peer${p.id}_v6 {
   reject;
 }
 protocol bgp hx_peer${p.id}_v4 {
-  description "HexaHost peer ${p.id}: ${p.name.replace(/"/g, "'")} (v4)";
+  description "Hosting peer ${p.id}: ${p.name.replace(/"/g, "'")} (v4)";
   local ${serverV4} as ${serverAsn};
   neighbor ${peerV4} as ${peerAsn};
   hold time 90;
@@ -115,7 +115,7 @@ function writeConf() {
 // Parse-check a candidate custom snippet (with the full generated config
 // around it) using `bird -p` before accepting it.
 function validateCandidate(peerId, customText, cb) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hexahost-bird-'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hosting-bird-'));
   const cleanup = () => fs.rmSync(tmp, { recursive: true, force: true });
   try {
     const peer = db.prepare('SELECT * FROM wg_peers WHERE id = ?').get(peerId);

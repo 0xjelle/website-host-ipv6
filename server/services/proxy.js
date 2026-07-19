@@ -49,13 +49,13 @@ function findSite(req) {
 
 function errorPage(res, code, title, message) {
   res.writeHead(code, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(`<!doctype html><html><head><meta charset="utf-8"><title>${code} · HexaHost</title>
+  res.end(`<!doctype html><html><head><meta charset="utf-8"><title>${code} · Hosting</title>
 <style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
 font-family:system-ui,sans-serif;background:#0b0e14;color:#e6e9f0}
 .card{text-align:center;padding:3rem}h1{font-size:4rem;margin:0;background:linear-gradient(135deg,#7c6cff,#38d0ff);
 -webkit-background-clip:text;background-clip:text;color:transparent}p{color:#8b93a7}</style></head>
 <body><div class="card"><h1>${code}</h1><h2>${title}</h2><p>${message}</p>
-<p style="font-size:.8rem;opacity:.6">⬡ served by HexaHost</p></div></body></html>`);
+<p style="font-size:.8rem;opacity:.6">⬡ served by Hosting</p></div></body></html>`);
 }
 
 function serveStatic(site, req, res) {

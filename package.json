@@ -1,5 +1,5 @@
 {
-  "name": "hexahost",
+  "name": "hosting",
   "version": "1.0.0",
   "description": "Self-hosted IPv6-first hosting platform: static & Node.js sites, GitHub auto-deploy, WireGuard tunnels for your IPv6 block / ASN, and a full admin dashboard.",
   "main": "server/index.js",

@@ -36,7 +36,17 @@ module.exports = {
   dataDir,
   sitesDir: path.join(dataDir, 'sites'),
   wgDir: path.join(dataDir, 'wireguard'),
-  dbFile: path.join(dataDir, 'hexahost.db'),
+  dbFile: (() => {
+    // migrate a database created under the old product name
+    const oldDb = path.join(dataDir, 'hexahost.db');
+    const newDb = path.join(dataDir, 'hosting.db');
+    if (fs.existsSync(oldDb) && !fs.existsSync(newDb)) {
+      for (const suffix of ['', '-wal', '-shm']) {
+        if (fs.existsSync(oldDb + suffix)) fs.renameSync(oldDb + suffix, newDb + suffix);
+      }
+    }
+    return newDb;
+  })(),
   adminPort: parseInt(process.env.ADMIN_PORT || '3000', 10),
   proxyPort: parseInt(process.env.PROXY_PORT || '8080', 10),
   publicHost: process.env.PUBLIC_HOST || 'localhost',

@@ -11,7 +11,7 @@ function getTokenFromReq(req) {
   if (h && h.startsWith('Bearer ')) return h.slice(7);
   const cookie = req.headers.cookie;
   if (cookie) {
-    const m = cookie.match(/(?:^|;\s*)hexatoken=([^;]+)/);
+    const m = cookie.match(/(?:^|;\s*)hostingtoken=([^;]+)/);
     if (m) return m[1];
   }
   return null;

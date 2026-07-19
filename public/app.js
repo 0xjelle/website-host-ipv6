@@ -1,4 +1,4 @@
-/* HexaHost console — hash-routed SPA, no build step. */
+/* Hosting console — hash-routed SPA, no build step. */
 (() => {
   const $app = document.getElementById('app');
   let me = null;
@@ -66,7 +66,7 @@
     const draw = () => {
       $app.innerHTML = `
       <div class="auth-wrap"><div class="auth-card">
-        <div class="logo"><span class="hex">⬡</span> HexaHost</div>
+        <div class="logo"><span class="hex">⬡</span> Hosting</div>
         ${mode === 'register' && !hasUsers ? `<div class="first-user-banner" style="margin-top:1.2rem">✨ You're the first user — this account becomes the <b>administrator</b>.</div>` : ''}
         <h1>${mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
         <p class="sub">${mode === 'login' ? 'Sign in to your hosting console.' : 'Host sites, connect GitHub, tunnel your IPv6 space.'}</p>
@@ -103,7 +103,7 @@
     $app.innerHTML = `
     <div class="shell">
       <aside class="sidebar">
-        <div class="logo"><span class="hex">⬡</span> HexaHost</div>
+        <div class="logo"><span class="hex">⬡</span> Hosting</div>
         ${nav('overview', '◈', 'Overview')}
         ${nav('sites', '▤', 'Sites')}
         ${nav('network', '⇄', 'Network / VPN')}
@@ -642,7 +642,7 @@
         <div class="page-head"><h1>System</h1>
           <div class="sub">${esc(s.hostname)} · ${esc(s.platform)} · Node ${esc(s.node)}</div></div>
         <div class="tiles">
-          <div class="tile accent"><div class="t-label">HexaHost uptime</div><div class="t-value">${uptimeStr(s.uptimeSec)}</div></div>
+          <div class="tile accent"><div class="t-label">Hosting uptime</div><div class="t-value">${uptimeStr(s.uptimeSec)}</div></div>
           <div class="tile"><div class="t-label">System uptime</div><div class="t-value">${uptimeStr(s.systemUptimeSec)}</div></div>
           <div class="tile"><div class="t-label">CPU cores</div><div class="t-value">${s.cpus}</div></div>
           <div class="tile"><div class="t-label">Load (1m)</div><div class="t-value">${s.load1.toFixed(2)}</div><div class="t-note">${s.load5.toFixed(2)} / ${s.load15.toFixed(2)} (5m/15m)</div></div>

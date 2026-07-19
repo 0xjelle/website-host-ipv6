@@ -28,7 +28,10 @@ function start(site, config) {
     PORT: String(site.app_port),
     NODE_ENV: 'production',
   };
-  const child = spawn('/bin/sh', ['-c', cmdline], { cwd, env });
+  // Own process group so stop() can take down the whole tree, and a stale
+  // group from a previous platform run can be cleaned up on boot.
+  const child = spawn('/bin/sh', ['-c', cmdline], { cwd, env, detached: true });
+  db.prepare('UPDATE sites SET app_pid = ? WHERE id = ?').run(child.pid, site.id);
   const entry = { child, logs: [], startedAt: Date.now(), restarts: procs.get(site.id)?.restarts ?? 0 };
   procs.set(site.id, entry);
   appendLog(entry, `▶ starting: ${cmdline} (PORT=${site.app_port})`);
@@ -57,11 +60,19 @@ function stop(siteId) {
   const entry = procs.get(siteId);
   if (entry?.child) {
     entry.child.removeAllListeners('exit');
-    try { entry.child.kill('SIGTERM'); } catch {}
-    const child = entry.child;
-    setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 5000).unref();
+    const pid = entry.child.pid;
+    try { process.kill(-pid, 'SIGTERM'); } catch { try { entry.child.kill('SIGTERM'); } catch {} }
+    setTimeout(() => { try { process.kill(-pid, 'SIGKILL'); } catch {} }, 5000).unref();
     entry.child = null;
   }
+  db.prepare('UPDATE sites SET app_pid = NULL WHERE id = ?').run(siteId);
+}
+
+// Kill a process group left over from a previous platform run (boot cleanup)
+function reapStale(site) {
+  if (!site.app_pid) return;
+  try { process.kill(-site.app_pid, 'SIGKILL'); } catch {}
+  db.prepare('UPDATE sites SET app_pid = NULL WHERE id = ?').run(site.id);
 }
 
 function status(siteId) {
@@ -82,4 +93,4 @@ function resetRestarts(siteId) {
   if (entry) entry.restarts = 0;
 }
 
-module.exports = { start, stop, status, logs, resetRestarts, siteWorkDir };
+module.exports = { start, stop, status, logs, resetRestarts, reapStale, siteWorkDir };

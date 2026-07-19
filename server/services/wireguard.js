@@ -65,7 +65,7 @@ const validAsn = (v) => !v || /^(AS)?\d{1,10}$/i.test(v);
 function renderServerConf() {
   const s = getSettings();
   const peers = db.prepare('SELECT * FROM wg_peers WHERE enabled = 1').all();
-  let conf = `# HexaHost WireGuard server config — generated ${new Date().toISOString()}
+  let conf = `# Hosting WireGuard server config — generated ${new Date().toISOString()}
 [Interface]
 PrivateKey = ${s.private_key}
 Address = ${s.tunnel_v4}, ${s.tunnel_v6}
@@ -95,7 +95,7 @@ function renderClientConf(peer) {
   if (peer.routed_v4) addresses.push(peer.routed_v4);
   const serverV4 = s.tunnel_v4.split('/')[0];
   const serverV6 = s.tunnel_v6.split('/')[0];
-  return `# HexaHost WireGuard — peer "${peer.name}"
+  return `# Hosting WireGuard — peer "${peer.name}"
 [Interface]
 PrivateKey = ${peer.private_key}
 Address = ${addresses.join(', ')}
@@ -120,9 +120,9 @@ function renderBirdConf(peer) {
   const peerV4 = peer.addr_v4.split('/')[0];
   const serverV6 = s.tunnel_v6.split('/')[0];
   const serverV4 = s.tunnel_v4.split('/')[0];
-  let conf = `# BIRD2 config — YOUR side of the HexaHost tunnel (the WireGuard client).
+  let conf = `# BIRD2 config — YOUR side of the Hosting tunnel (the WireGuard client).
 # Announces ${[peer.routed_v6, peer.routed_v4].filter(Boolean).join(' + ')} from AS${asn}
-# to the HexaHost server${serverAsn ? ` (AS${serverAsn})` : ''} over the tunnel.
+# to the Hosting server${serverAsn ? ` (AS${serverAsn})` : ''} over the tunnel.
 # Bring the WireGuard tunnel up first, then: bird -c this-file.conf
 
 router id ${peerV4};
@@ -136,7 +136,7 @@ protocol static announce_v6 {
   route ${peer.routed_v6} unreachable;   # originate your prefix
 }
 
-protocol bgp hexahost_v6 {
+protocol bgp hosting_v6 {
   local ${peerV6} as ${asn};
   neighbor ${serverV6} as ${serverAsn || '<SERVER_ASN — ask your admin to set it>'};
   hold time 90;
@@ -152,7 +152,7 @@ protocol static announce_v4 {
   route ${peer.routed_v4} unreachable;
 }
 
-protocol bgp hexahost_v4 {
+protocol bgp hosting_v4 {
   local ${peerV4} as ${asn};
   neighbor ${serverV4} as ${serverAsn || '<SERVER_ASN — ask your admin to set it>'};
   hold time 90;

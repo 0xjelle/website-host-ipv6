@@ -1,5 +1,5 @@
 #!/bin/sh
-# Container entrypoint: run HexaHost, then start BIRD once the generated
+# Container entrypoint: run Hosting, then start BIRD once the generated
 # config exists so BGP-over-tunnel works inside the container too.
 set -e
 

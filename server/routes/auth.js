@@ -22,7 +22,7 @@ router.post('/register', (req, res) => {
     const user = db.prepare('SELECT id, email, name, role FROM users WHERE id = ?').get(r.lastInsertRowid);
     logActivity(user.id, 'user.register', `${user.email}${role === 'admin' ? ' (first user → admin)' : ''}`);
     const token = signToken(user);
-    res.setHeader('Set-Cookie', `hexatoken=${token}; ${cookieOpts}`);
+    res.setHeader('Set-Cookie', `hostingtoken=${token}; ${cookieOpts}`);
     res.json({ user, token, firstUser: role === 'admin' });
   } catch (e) {
     if (String(e.message).includes('UNIQUE')) return res.status(409).json({ error: 'An account with that email already exists' });
@@ -40,12 +40,12 @@ router.post('/login', (req, res) => {
   const user = { id: row.id, email: row.email, name: row.name, role: row.role };
   logActivity(user.id, 'user.login', user.email);
   const token = signToken(user);
-  res.setHeader('Set-Cookie', `hexatoken=${token}; ${cookieOpts}`);
+  res.setHeader('Set-Cookie', `hostingtoken=${token}; ${cookieOpts}`);
   res.json({ user, token });
 });
 
 router.post('/logout', (req, res) => {
-  res.setHeader('Set-Cookie', 'hexatoken=; HttpOnly; Path=/; Max-Age=0');
+  res.setHeader('Set-Cookie', 'hostingtoken=; HttpOnly; Path=/; Max-Age=0');
   res.json({ ok: true });
 });
 

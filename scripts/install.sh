@@ -33,9 +33,9 @@ fi
 say "Installing HexaHost on ${PRETTY_NAME:-this system} → $APP_DIR"
 
 # ── packages ────────────────────────────────────────────────────────
-say "Installing packages (git, curl, wireguard)…"
+say "Installing packages (git, curl, wireguard, bird2)…"
 apt-get update -qq
-apt-get install -y -qq git curl ca-certificates wireguard-tools >/dev/null
+apt-get install -y -qq git curl ca-certificates wireguard-tools bird2 >/dev/null
 
 node_major() { command -v node >/dev/null && node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0; }
 if [ "$(node_major)" -lt 18 ]; then
@@ -102,6 +102,20 @@ if [ "$SYSTEMD_UP" -eq 1 ]; then
   fi
 fi
 
+# ── bird2 (BGP over the tunnels) ────────────────────────────────────
+mkdir -p /etc/bird
+if [ -f /etc/bird/bird.conf ] && [ ! -L /etc/bird/bird.conf ]; then
+  mv /etc/bird/bird.conf /etc/bird/bird.conf.dist
+fi
+ln -sf "$APP_DIR/data/bird/bird.conf" /etc/bird/bird.conf
+if [ "$SYSTEMD_UP" -eq 1 ]; then
+  for _ in $(seq 1 20); do [ -f "$APP_DIR/data/bird/bird.conf" ] && break; sleep 1; done
+  if [ -f "$APP_DIR/data/bird/bird.conf" ]; then
+    systemctl enable --now bird 2>/dev/null && systemctl restart bird 2>/dev/null \
+      || warn "bird did not start — check 'journalctl -u bird'. BGP configs are still generated."
+  fi
+fi
+
 # ── firewall ────────────────────────────────────────────────────────
 if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q 'Status: active'; then
   say "Opening firewall ports (ufw): $PROXY_PORT/tcp, $ADMIN_PORT/tcp, 51820/udp"
@@ -128,7 +142,7 @@ echo
 echo "   Config    : $APP_DIR/.env   (set PUBLIC_HOST to your DNS name, then: systemctl restart hexahost)"
 echo "   Logs      : journalctl -u hexahost -f"
 echo "   Update    : cd $APP_DIR && git pull && npm install --omit=dev && systemctl restart hexahost"
-echo "   Uninstall : systemctl disable --now hexahost wg-quick@wg0; rm -rf $APP_DIR /etc/systemd/system/hexahost.service /etc/wireguard/wg0.conf"
+echo "   Uninstall : systemctl disable --now hexahost wg-quick@wg0 bird; rm -rf $APP_DIR /etc/systemd/system/hexahost.service /etc/wireguard/wg0.conf /etc/bird/bird.conf"
 echo
 echo "   HTTPS tip : set PROXY_PORT=8080 in .env, then run Caddy on 80/443 with"
 echo "               'reverse_proxy localhost:8080' for automatic Let's Encrypt certificates."

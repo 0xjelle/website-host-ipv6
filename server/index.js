@@ -32,8 +32,9 @@ app.use((err, req, res, next) => {
 });
 
 // ── boot ────────────────────────────────────────────────────────────
-wg.getSettings();     // ensure server keys exist
-wg.syncToDisk();      // write wg0.conf
+wg.getSettings();                       // ensure server keys exist
+wg.syncToDisk();                        // write wg0.conf
+require('./services/bird').writeConf(); // write bird.conf (BGP over tunnel)
 
 // Resume node apps that were live before the restart
 for (const site of db.prepare("SELECT * FROM sites WHERE type = 'node' AND status = 'live'").all()) {

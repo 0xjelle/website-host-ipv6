@@ -401,7 +401,18 @@
 
   // ── network / wireguard ─────────────────────────────────────────
   async function pageNetwork() {
-    const { server, peers } = await api('/wireguard' + (me.role === 'admin' ? '?all=1' : ''));
+    const { server, peers, bgp } = await api('/wireguard' + (me.role === 'admin' ? '?all=1' : ''));
+
+    const bgpCell = (p) => {
+      if (!p.asn) return '<span style="color:var(--ink-3)">—</span>';
+      if (!p.bgp_enabled) return pill('stopped').replace('stopped', 'off');
+      const ses = bgp?.sessions?.[p.id];
+      if (!bgp?.available) return pill('queued').replace('queued', 'configured');
+      if (!ses) return pill('queued').replace('queued', 'starting');
+      const infos = ['v6', 'v4'].filter(f => ses[f]).map(f => `${f}: ${ses[f].info || ses[f].state}`);
+      const up = Object.values(ses).every(x => /Established/i.test(x.info));
+      return `<span class="pill ${up ? 'live' : 'queued'}" title="${esc(infos.join(' · '))}"><span class="dot"></span>${up ? 'established' : esc(Object.values(ses)[0].info || Object.values(ses)[0].state)}</span>`;
+    };
     const c = h(`
       <div>
         <div class="page-head"><h1>Network / VPN</h1>
@@ -413,25 +424,27 @@
             <span class="k">Endpoint</span><span class="v">${esc(server.endpoint)}:${server.listen_port}</span>
             <span class="k">Public key</span><span class="v">${esc(server.public_key)}</span>
             <span class="k">Tunnel subnets</span><span class="v">${esc(server.tunnel_v4)} · ${esc(server.tunnel_v6)}</span>
+            <span class="k">BGP (BIRD2)</span><span class="v">${server.server_asn ? `AS${esc(server.server_asn.replace(/^AS/i, ''))}${bgp?.available ? ' · daemon running' : ' · daemon not detected'}` : '<span style="color:var(--warn)">server ASN not set — BGP sessions disabled</span>'}</span>
           </div>
           ${me.role === 'admin' ? `<div style="margin-top:1rem;display:flex;gap:.6rem;flex-wrap:wrap">
             <button class="btn small" id="wgsettings">⚙ Server settings</button>
-            <a class="btn small" href="/api/wireguard/server/config" download>⬇ Download wg0.conf</a></div>` : ''}
+            <a class="btn small" href="/api/wireguard/server/config" download>⬇ Download wg0.conf</a>
+            <a class="btn small" href="/api/wireguard/server/bird-config" download>⬇ Download bird.conf</a></div>` : ''}
         </div>
 
         <div class="card"><h2>Peers <span class="hint">${peers.length} configured</span></h2>
           ${peers.length ? `<div class="tbl-scroll"><table class="tbl">
-            <tr><th>Name</th>${me.role === 'admin' ? '<th>Owner</th>' : ''}<th>Tunnel IPs</th><th>Routed prefixes</th><th>ASN</th><th>State</th><th></th></tr>
+            <tr><th>Name</th>${me.role === 'admin' ? '<th>Owner</th>' : ''}<th>Tunnel IPs</th><th>Routed prefixes</th><th>ASN</th><th>BGP</th><th></th></tr>
             ${peers.map(p => `<tr>
               <td><b>${esc(p.name)}</b></td>
               ${me.role === 'admin' ? `<td>${esc(p.owner_email || '')}</td>` : ''}
               <td class="mono">${esc(p.addr_v4)}<br>${esc(p.addr_v6)}</td>
               <td class="mono">${[p.routed_v6, p.routed_v4].filter(Boolean).map(esc).join('<br>') || '—'}</td>
               <td class="mono">${esc(p.asn || '—')}</td>
-              <td>${p.enabled ? pill('live').replace('live', 'live') : pill('stopped')}</td>
+              <td>${bgpCell(p)}</td>
               <td style="white-space:nowrap">
                 <a class="btn small" href="/api/wireguard/peers/${p.id}/config" download title="WireGuard client config">⬇ conf</a>
-                ${p.asn && p.routed_v6 ? `<a class="btn small" href="/api/wireguard/peers/${p.id}/bird" target="_blank" title="BIRD2 BGP snippet">BGP</a>` : ''}
+                ${p.asn && (p.routed_v6 || p.routed_v4) ? `<button class="btn small bgpbtn" data-id="${p.id}" title="BGP session over the tunnel">BGP</button>` : ''}
                 <button class="btn small danger delpeer" data-id="${p.id}" data-name="${esc(p.name)}">✕</button>
               </td></tr>`).join('')}
           </table></div>`
@@ -443,7 +456,7 @@
             <li>Create a peer — optionally enter <b>your own IPv6 block</b> (e.g. <code class="code">2a0e:8f02:f01f::/48</code>), extra IPv4 space, and your <b>ASN</b>.</li>
             <li>Download the <code class="code">.conf</code> and import it into any WireGuard client (<code class="code">wg-quick up ./file.conf</code>).</li>
             <li>Your prefixes are routed through the tunnel — traffic to them arrives at your machine.</li>
-            <li>With an ASN + IPv6 block, grab the <b>BGP</b> snippet (BIRD2) to announce your prefix from your side.</li>
+            <li>Hit <b>BGP</b> on the peer to run a real BGP session over the tunnel: the server (BIRD2) peers with your tunnel address and accepts your registered prefixes. Download the ready-made config for your side, or upload your own <code class="code">bird.conf</code> — it's parse-checked before it goes live.</li>
           </ol>
         </div>
       </div>`);
@@ -478,6 +491,59 @@
         } catch (err) { oops(err); }
       });
     });
+    main.querySelectorAll('.bgpbtn').forEach(btn => btn.addEventListener('click', () => {
+      const p = peers.find(x => String(x.id) === btn.dataset.id);
+      if (!p) return;
+      const ses = bgp?.sessions?.[p.id];
+      const sesLine = (f) => ses?.[f] ? `<span class="k">Session ${f}</span><span class="v">${esc(ses[f].info || ses[f].state)}</span>` : '';
+      const m = modal(`
+        <h2>BGP over the tunnel — ${esc(p.name)}</h2>
+        <div class="kv" style="margin-bottom:1rem">
+          <span class="k">Your ASN</span><span class="v">${esc(p.asn)}</span>
+          <span class="k">Server ASN</span><span class="v">${server.server_asn ? esc(server.server_asn) : '<span style="color:var(--warn)">not set (admin: Server settings)</span>'}</span>
+          <span class="k">Accepted prefixes</span><span class="v">${[p.routed_v6, p.routed_v4].filter(Boolean).map(esc).join(' · ')}</span>
+          <span class="k">Neighbor for you</span><span class="v">${esc(server.tunnel_v6.split('/')[0])} / ${esc(server.tunnel_v4.split('/')[0])}</span>
+          ${sesLine('v6')}${sesLine('v4')}
+        </div>
+        <p style="color:var(--ink-2);font-size:.88rem;margin:0 0 1rem">
+          When enabled, the server runs a BIRD2 session against your tunnel address and
+          accepts <b>only your registered prefixes</b>. Run BIRD on your side too —
+          <a href="/api/wireguard/peers/${p.id}/bird" download>download your ready-made bird.conf</a> —
+          or upload your own config below.</p>
+        <form id="bgpf">
+          <label class="field" style="display:flex;align-items:center;gap:.5rem">
+            <input type="checkbox" name="bgp_enabled" style="width:auto" ${p.bgp_enabled ? 'checked' : ''}>
+            <span class="lbl" style="margin:0">Enable server-side BGP session for this peer</span></label>
+          <label class="field"><span class="lbl">Custom BIRD config <span style="font-weight:400">(optional — included on the server, parse-checked before apply)</span></span>
+            <textarea name="bird_custom" rows="8" placeholder="# e.g. tweak timers, add an extra protocol…&#10;# leave empty to use the auto-generated session">${esc(p.bird_custom || '')}</textarea>
+            <span class="help">Or upload a file: <input type="file" id="birdfile" accept=".conf,.txt" style="width:auto;display:inline"></span></label>
+          <div class="actions">
+            <button type="button" class="btn" id="cancel">Cancel</button>
+            <button type="submit" class="btn primary">Save &amp; apply</button>
+          </div>
+        </form>`);
+      m.querySelector('#cancel').addEventListener('click', () => m.remove());
+      m.querySelector('#birdfile').addEventListener('change', async (e) => {
+        const f = e.target.files[0];
+        if (f) m.querySelector('textarea[name=bird_custom]').value = await f.text();
+      });
+      m.querySelector('#bgpf').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        try {
+          const r = await api(`/wireguard/peers/${p.id}/bgp`, {
+            method: 'POST',
+            body: { bgp_enabled: form.bgp_enabled.checked, bird_custom: form.bird_custom.value },
+          });
+          m.remove();
+          const note = r.bird?.applied ? 'applied to BIRD live'
+            : (r.validation?.checked === false && r.validation?.note) ? r.validation.note
+            : (r.bird?.reason || 'saved');
+          toast(`BGP settings saved — ${note}`, 'ok');
+          pageNetwork();
+        } catch (err) { oops(err); }
+      });
+    }));
     main.querySelectorAll('.delpeer').forEach(btn => btn.addEventListener('click', async () => {
       if (!confirm(`Delete peer "${btn.dataset.name}"?`)) return;
       try { await api(`/wireguard/peers/${btn.dataset.id}`, { method: 'DELETE' }); toast('Peer deleted', 'ok'); pageNetwork(); } catch (e) { oops(e); }
@@ -493,6 +559,9 @@
             <label class="field"><span class="lbl">DNS for clients <span style="font-weight:400">(optional)</span></span>
               <input type="text" name="dns" value="${esc(server.dns)}" placeholder="1.1.1.1, 2606:4700:4700::1111"></label>
           </div>
+          <label class="field"><span class="lbl">Server ASN <span style="font-weight:400">(enables BGP sessions over the tunnels)</span></span>
+            <input type="text" name="server_asn" value="${esc(server.server_asn || '')}" placeholder="AS64512">
+            <span class="help">The ASN this server speaks BGP as. Peers' sessions peer against it; private range 64512–65534 is fine if you don't have a public one.</span></label>
           <div class="actions">
             <button type="button" class="btn" id="cancel">Cancel</button>
             <button type="submit" class="btn primary">Save</button>

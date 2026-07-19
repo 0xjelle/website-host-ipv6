@@ -85,6 +85,14 @@ CREATE TABLE IF NOT EXISTS activity (
 );
 `);
 
+// Lightweight migrations for columns added after the initial release
+function addColumn(table, def) {
+  try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${def}`); } catch { /* exists */ }
+}
+addColumn('wg_settings', "server_asn TEXT NOT NULL DEFAULT ''");
+addColumn('wg_peers', 'bgp_enabled INTEGER NOT NULL DEFAULT 0');
+addColumn('wg_peers', 'bird_custom TEXT');
+
 function logActivity(userId, action, detail = '') {
   db.prepare('INSERT INTO activity (user_id, action, detail) VALUES (?, ?, ?)')
     .run(userId, action, detail);

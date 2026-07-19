@@ -112,30 +112,57 @@ PersistentKeepalive = 25
 }
 
 function renderBirdConf(peer) {
-  if (!peer.asn || !peer.routed_v6) return null;
+  if (!peer.asn || !(peer.routed_v6 || peer.routed_v4)) return null;
+  const s = getSettings();
   const asn = peer.asn.toUpperCase().replace(/^AS/, '');
+  const serverAsn = String(s.server_asn || '').toUpperCase().replace(/^AS/, '');
   const peerV6 = peer.addr_v6.split('/')[0];
-  const serverV6 = getSettings().tunnel_v6.split('/')[0];
-  return `# BIRD2 snippet — announce ${peer.routed_v6} from AS${asn}
-# Runs on YOUR side of the tunnel (the WireGuard client).
-# Adjust the upstream session to match your transit/IX provider.
+  const peerV4 = peer.addr_v4.split('/')[0];
+  const serverV6 = s.tunnel_v6.split('/')[0];
+  const serverV4 = s.tunnel_v4.split('/')[0];
+  let conf = `# BIRD2 config — YOUR side of the HexaHost tunnel (the WireGuard client).
+# Announces ${[peer.routed_v6, peer.routed_v4].filter(Boolean).join(' + ')} from AS${asn}
+# to the HexaHost server${serverAsn ? ` (AS${serverAsn})` : ''} over the tunnel.
+# Bring the WireGuard tunnel up first, then: bird -c this-file.conf
 
-router id 10.66.0.${peer.addr_v4.split('.')[3].split('/')[0]};
+router id ${peerV4};
+log syslog all;
 
+protocol device { }
+`;
+  if (peer.routed_v6) conf += `
 protocol static announce_v6 {
   ipv6;
   route ${peer.routed_v6} unreachable;   # originate your prefix
 }
 
-protocol bgp hexahost_upstream {
+protocol bgp hexahost_v6 {
   local ${peerV6} as ${asn};
-  neighbor ${serverV6} as ${asn};        # replace with your upstream's ASN + IP
+  neighbor ${serverV6} as ${serverAsn || '<SERVER_ASN — ask your admin to set it>'};
+  hold time 90;
   ipv6 {
-    import all;
+    import none;
     export where source = RTS_STATIC;    # only announce your own prefix
   };
 }
 `;
+  if (peer.routed_v4) conf += `
+protocol static announce_v4 {
+  ipv4;
+  route ${peer.routed_v4} unreachable;
+}
+
+protocol bgp hexahost_v4 {
+  local ${peerV4} as ${asn};
+  neighbor ${serverV4} as ${serverAsn || '<SERVER_ASN — ask your admin to set it>'};
+  hold time 90;
+  ipv4 {
+    import none;
+    export where source = RTS_STATIC;
+  };
+}
+`;
+  return conf;
 }
 
 // ── best-effort live application ────────────────────────────────────

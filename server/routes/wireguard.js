@@ -2,6 +2,7 @@ const express = require('express');
 const { db, logActivity } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
 const wg = require('../services/wireguard');
+const bird = require('../services/bird');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -19,6 +20,7 @@ const peerView = (p) => ({
   id: p.id, name: p.name, public_key: p.public_key,
   addr_v4: p.addr_v4, addr_v6: p.addr_v6,
   routed_v6: p.routed_v6, routed_v4: p.routed_v4, asn: p.asn,
+  bgp_enabled: !!p.bgp_enabled, bird_custom: p.bird_custom || '',
   enabled: !!p.enabled, created_at: p.created_at, user_id: p.user_id,
 });
 
@@ -27,13 +29,15 @@ router.get('/', (req, res) => {
   const peers = req.user.role === 'admin' && req.query.all === '1'
     ? db.prepare('SELECT p.*, u.email AS owner_email FROM wg_peers p JOIN users u ON u.id = p.user_id ORDER BY p.id').all()
     : db.prepare('SELECT * FROM wg_peers WHERE user_id = ? ORDER BY id').all(req.user.id);
-  res.json({
+  bird.status((bgp) => res.json({
     server: {
       public_key: s.public_key, endpoint: s.endpoint, listen_port: s.listen_port,
       tunnel_v4: s.tunnel_v4, tunnel_v6: s.tunnel_v6, dns: s.dns,
+      server_asn: s.server_asn || '',
     },
     peers: peers.map(p => ({ ...peerView(p), owner_email: p.owner_email })),
-  });
+    bgp,
+  }));
 });
 
 router.post('/peers', (req, res) => {
@@ -93,7 +97,51 @@ router.patch('/peers/:id', (req, res) => {
       b.enabled === undefined ? null : (b.enabled ? 1 : 0),
       peer.id);
   logActivity(req.user.id, 'wg.peer.update', `"${peer.name}"`);
+  bird.applyLive(() => {});
   wg.applyLive((result) => res.json({ peer: peerView(db.prepare('SELECT * FROM wg_peers WHERE id = ?').get(peer.id)), wireguard: result }));
+});
+
+// Enable/disable the server-side BGP session and upload a custom BIRD
+// snippet. Uploads are parse-checked with `bird -p` before being applied.
+router.post('/peers/:id/bgp', (req, res) => {
+  const peer = ownPeer(req, res);
+  if (!peer) return;
+  const b = req.body || {};
+  const enable = b.bgp_enabled === undefined ? !!peer.bgp_enabled : !!b.bgp_enabled;
+  const custom = b.bird_custom === undefined ? (peer.bird_custom || '') : String(b.bird_custom).slice(0, 100_000);
+
+  if (enable && !peer.asn) return res.status(400).json({ error: 'Set an ASN on this peer first (edit the peer)' });
+  if (enable && !peer.routed_v6 && !peer.routed_v4) {
+    return res.status(400).json({ error: 'Add a routed IPv6 or IPv4 prefix to this peer first — that is what the BGP session will accept' });
+  }
+
+  const save = (validation) => {
+    db.prepare('UPDATE wg_peers SET bgp_enabled = ?, bird_custom = ? WHERE id = ?')
+      .run(enable ? 1 : 0, custom || null, peer.id);
+    logActivity(req.user.id, 'wg.bgp.update',
+      `"${peer.name}" BGP ${enable ? 'enabled' : 'disabled'}${custom ? ' + custom config' : ''}`);
+    bird.applyLive((birdResult) => res.json({
+      peer: peerView(db.prepare('SELECT * FROM wg_peers WHERE id = ?').get(peer.id)),
+      validation, bird: birdResult,
+    }));
+  };
+
+  if (custom.trim()) {
+    bird.validateCandidate(peer.id, custom, (v) => {
+      if (!v.ok) return res.status(400).json({ error: `BIRD config rejected:\n${v.error}` });
+      save(v);
+    });
+  } else save({ ok: true, checked: false });
+});
+
+router.get('/bgp/status', (req, res) => {
+  bird.status((s) => {
+    if (req.user.role !== 'admin') {
+      const mine = new Set(db.prepare('SELECT id FROM wg_peers WHERE user_id = ?').all(req.user.id).map(r => String(r.id)));
+      s.sessions = Object.fromEntries(Object.entries(s.sessions).filter(([id]) => mine.has(id)));
+    }
+    res.json(s);
+  });
 });
 
 router.delete('/peers/:id', (req, res) => {
@@ -101,6 +149,7 @@ router.delete('/peers/:id', (req, res) => {
   if (!peer) return;
   db.prepare('DELETE FROM wg_peers WHERE id = ?').run(peer.id);
   logActivity(req.user.id, 'wg.peer.delete', `"${peer.name}"`);
+  bird.applyLive(() => {});
   wg.applyLive((result) => res.json({ ok: true, wireguard: result }));
 });
 
@@ -110,10 +159,20 @@ router.patch('/server', requireAdmin, (req, res) => {
   const s = wg.getSettings();
   const port = b.listen_port !== undefined ? parseInt(b.listen_port, 10) : s.listen_port;
   if (isNaN(port) || port < 1 || port > 65535) return res.status(400).json({ error: 'Invalid listen port' });
-  db.prepare('UPDATE wg_settings SET listen_port = ?, endpoint = ?, dns = ? WHERE id = 1')
-    .run(port, b.endpoint !== undefined ? b.endpoint : s.endpoint, b.dns !== undefined ? b.dns : s.dns);
-  logActivity(req.user.id, 'wg.server.update', `port ${port}`);
+  if (b.server_asn !== undefined && !wg.validAsn(b.server_asn)) return res.status(400).json({ error: 'Server ASN must look like AS64512 or 64512' });
+  db.prepare('UPDATE wg_settings SET listen_port = ?, endpoint = ?, dns = ?, server_asn = ? WHERE id = 1')
+    .run(port, b.endpoint !== undefined ? b.endpoint : s.endpoint,
+      b.dns !== undefined ? b.dns : s.dns,
+      b.server_asn !== undefined ? b.server_asn : s.server_asn);
+  logActivity(req.user.id, 'wg.server.update', `port ${port}${b.server_asn !== undefined ? `, ASN ${b.server_asn || '(cleared)'}` : ''}`);
+  bird.applyLive(() => {});
   wg.applyLive((result) => res.json({ server: wg.getSettings(), wireguard: result }));
+});
+
+router.get('/server/bird-config', requireAdmin, (req, res) => {
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="bird.conf"');
+  res.send(bird.renderConf());
 });
 
 router.get('/server/config', requireAdmin, (req, res) => {

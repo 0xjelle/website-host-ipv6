@@ -36,8 +36,11 @@ dashboard with a full admin area.
   (Curve25519 via Node's crypto, no shelling out), a tunnel IPv4 + IPv6, and a
   downloadable `.conf`. Enter **your own IPv6 block** (e.g. `2a0e:xxxx::/48`)
   and/or extra IPv4 space and the whole prefix is routed to you through the tunnel.
-- **ASN / BGP** — peers with an ASN + IPv6 block get a generated **BIRD2**
-  config snippet to announce the prefix from your side of the tunnel.
+- **BGP over the tunnel (BIRD2)** — enable a real server-side BGP session per
+  peer: your ASN peers with the server's ASN across the WireGuard tunnel,
+  with strict per-peer prefix filters. Download a ready-made BIRD2 config for
+  your side, or **upload your own bird.conf** — parse-checked before it goes
+  live, with session state shown in the dashboard.
 - **Pretty dashboard** — overview with stat tiles and recent deployments, site
   detail pages with tabs (deployments, GitHub, runtime logs, settings).
 - **Admin dashboard** — user management (roles, suspend, delete), all-sites view,
@@ -116,9 +119,19 @@ you're live; `npm start` is the default start command.
    `AllowedIPs`, so the whole block is routed down your tunnel. If `wg` is
    installed, HexaHost applies changes live via `wg syncconf`; otherwise the
    config is written to disk for `wg-quick@wg0`.
-4. With an ASN set, the peer's **BGP** button serves a BIRD2 snippet that
-   originates your prefix from your ASN on your side of the tunnel — adjust the
-   neighbor to your transit/IX session.
+4. **BGP over the tunnel** — hit the peer's **BGP** button:
+   - Toggle *Enable server-side BGP session*: HexaHost runs **BIRD2 on the
+     server** with a session against your tunnel address (your ASN ↔ the
+     server ASN set in *Server settings*). Import filters accept **only your
+     registered prefixes**; accepted routes are exported to the kernel so
+     traffic follows your announcement.
+   - Download the ready-made **bird.conf for your side** — it originates your
+     prefixes from your ASN and peers with the server over the tunnel. Bring
+     WireGuard up, `bird -c hexahost-bird.conf`, and the session establishes.
+   - Or **upload your own BIRD config** (paste or file) — it's parse-checked
+     with `bird -p` before being included, and applied live via
+     `birdc configure`. Session state (Established/Idle/…) shows in the
+     dashboard peer table.
 
 > Routing a public prefix end-to-end also requires that this server is actually
 > a valid next-hop for your block (your upstream routes it here, or you announce

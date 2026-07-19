@@ -154,6 +154,30 @@ you're live; `npm start` is the default start command.
 > it from the server). Hosting handles the tunnel + configs; the upstream
 > arrangement is between you and your transit provider.
 
+## Uplink — using BGPTunnel (iFog) or another provider
+
+If you get your IPv6 block via a tunnel *provider* (BGPTunnel by iFog,
+Route48-style services, your own upstream), the roles flip: **this server is
+the WireGuard client** and the provider runs the other end. Hosting supports
+that directly:
+
+1. In your provider's dashboard, download the **WireGuard config** for the
+   tunnel and the **BIRD config** for the BGP session.
+2. **Network / VPN → Uplink** (admin) — paste (or upload) both files, hit
+   *Save & connect*.
+3. Hosting brings the tunnel up as a client (`wg-quick`, interface `uplink`),
+   merges the provider's BIRD config into its managed `bird.conf` (clashing
+   `router id`/`log`/`device`/`kernel` sections are stripped automatically,
+   and the result is parse-checked with `bird -p` before applying), and the
+   session establishes: your prefix is announced from your ASN, and your
+   IPv6 block routes to this server.
+4. Point the **Site IPv6 pool** at a chunk of that block — every website now
+   gets a real, publicly routable IPv6 address from your own space.
+
+Safety: if the provider's WireGuard config routes `::/0`/`0.0.0.0/0` without
+`Table = off`, Hosting adds `Table = off` automatically so the tunnel can't
+replace the server's default route — routing decisions stay with BIRD.
+
 ## Dedicated IPv6 per site (auto-delegation)
 
 Give websites their own addresses from your block:

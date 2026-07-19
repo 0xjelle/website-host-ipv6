@@ -25,6 +25,52 @@ function bgpPeers() {
     .filter(p => p.asn && (p.routed_v6 || p.routed_v4));
 }
 
+// Extract the mergeable parts of a provider BIRD config (BGPTunnel/iFog
+// etc.): keep protocol bgp/static, filters, functions, templates and
+// defines; drop router id, log, device/kernel/direct protocols, which our
+// managed config already provides and would clash on.
+function extractUplinkBird(text) {
+  const src = String(text || '').replace(/\r\n/g, '\n');
+  const kept = [];
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    while (i < n && /\s/.test(src[i])) i++;
+    if (i >= n) break;
+    if (src[i] === '#') { while (i < n && src[i] !== '\n') i++; continue; }
+    const start = i;
+    let depth = 0, inStr = false, closed = false;
+    while (i < n && !closed) {
+      const c = src[i];
+      if (inStr) { if (c === '"') inStr = false; i++; continue; }
+      if (c === '"') { inStr = true; i++; continue; }
+      if (c === '#') { while (i < n && src[i] !== '\n') i++; continue; }
+      if (c === '{') depth++;
+      else if (c === '}') {
+        depth--;
+        if (depth === 0) {
+          i++;
+          while (i < n && /\s/.test(src[i])) i++;
+          if (src[i] === ';') i++;
+          closed = true;
+          continue;
+        }
+      } else if (c === ';' && depth === 0) { i++; closed = true; continue; }
+      i++;
+    }
+    const stmt = src.slice(start, i).trim();
+    if (/^(protocol\s+(bgp|static)\b|filter\b|function\b|template\s+bgp\b|define\b)/.test(stmt)) kept.push(stmt);
+  }
+  return kept.join('\n\n');
+}
+
+const uplinkConfPath = () => path.join(birdDir, 'uplink.conf');
+
+function uplinkSettings() {
+  const s = db.prepare('SELECT uplink_bird, uplink_enabled FROM wg_settings WHERE id = 1').get() || {};
+  return { bird: s.uplink_bird || '', enabled: !!s.uplink_enabled };
+}
+
 function renderConf() {
   const s = wg.getSettings();
   const serverAsn = asnDigits(s.server_asn);
@@ -92,10 +138,23 @@ protocol bgp hx_peer${p.id}_v4 {
       conf += `include "${customPath(p.id)}";\n`;
     }
   }
+
+  const uplink = uplinkSettings();
+  if (uplink.enabled && uplink.bird.trim()) {
+    conf += `\n# ── uplink: provider BGP tunnel (announce your prefix upstream) ──\ninclude "${uplinkConfPath()}";\n`;
+  }
   return conf;
 }
 
 function writeConf() {
+  const uplink = uplinkSettings();
+  if (uplink.bird.trim()) {
+    fs.writeFileSync(uplinkConfPath(),
+      `# extracted from the provider's BIRD config — managed by Hosting\n${extractUplinkBird(uplink.bird)}\n`,
+      { mode: 0o644 });
+  } else if (fs.existsSync(uplinkConfPath())) {
+    fs.unlinkSync(uplinkConfPath());
+  }
   // (re)write custom snippets, drop stale ones
   const wanted = new Set();
   for (const p of bgpPeers()) {
@@ -143,6 +202,37 @@ function validateCandidate(peerId, customText, cb) {
   }
 }
 
+// Parse-check a candidate uplink BIRD config (extracted, inside the full
+// generated config) with `bird -p` before accepting it.
+function validateUplink(birdText, cb) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hosting-uplink-'));
+  const cleanup = () => fs.rmSync(tmp, { recursive: true, force: true });
+  try {
+    const extracted = extractUplinkBird(birdText);
+    if (!extracted.trim()) {
+      cleanup();
+      return cb({ ok: false, checked: false, error: 'No usable BGP/static/filter sections found in that config' });
+    }
+    const candidateUplink = path.join(tmp, 'uplink.conf');
+    fs.writeFileSync(candidateUplink, extracted + '\n');
+    let conf = renderConf();
+    // point (or add) the uplink include at the candidate
+    if (conf.includes(uplinkConfPath())) conf = conf.replace(uplinkConfPath(), candidateUplink);
+    else conf += `\ninclude "${candidateUplink}";\n`;
+    const candidateConf = path.join(tmp, 'bird.conf');
+    fs.writeFileSync(candidateConf, conf);
+    execFile('bird', ['-p', '-c', candidateConf], (err, stdout, stderr) => {
+      cleanup();
+      if (!err) return cb({ ok: true, checked: true, extracted });
+      if (err.code === 'ENOENT') return cb({ ok: true, checked: false, extracted, note: 'bird binary not found — config accepted without parse check' });
+      cb({ ok: false, checked: true, error: (stderr || stdout || err.message).trim().split('\n').slice(-4).join('\n') });
+    });
+  } catch (e) {
+    cleanup();
+    cb({ ok: false, checked: false, error: e.message });
+  }
+}
+
 // Apply the current config to a running BIRD via birdc, best effort.
 function applyLive(cb) {
   const confPath = writeConf();
@@ -157,20 +247,27 @@ function applyLive(cb) {
   });
 }
 
-// Live session status: { [peerId]: { v6: {state, info}, v4: {...} } }
+// Live session status: peer sessions keyed by id, plus uplink (provider)
+// BGP protocols — any BGP protocol that isn't one of our hx_peer sessions.
 function status(cb) {
   execFile('birdc', ['show', 'protocols'], (err, stdout) => {
-    if (err) return cb({ available: false, sessions: {} });
+    if (err) return cb({ available: false, sessions: {}, uplink: [] });
     const sessions = {};
+    const uplink = [];
     for (const line of stdout.split('\n')) {
-      const m = line.match(/^hx_peer(\d+)_v([46])\s+BGP\s+\S+\s+(\S+)\s+(\S+)(?:\s+(.*))?$/);
+      const m = line.match(/^(\S+)\s+BGP\s+\S+\s+(\S+)\s+(\S+)(?:\s+(.*))?$/);
       if (!m) continue;
-      const [, id, fam, state, , info] = m;
-      sessions[id] = sessions[id] || {};
-      sessions[id]['v' + fam] = { state, info: (info || '').trim() };
+      const [, name, state, , info] = m;
+      const peer = name.match(/^hx_peer(\d+)_v([46])$/);
+      if (peer) {
+        sessions[peer[1]] = sessions[peer[1]] || {};
+        sessions[peer[1]]['v' + peer[2]] = { state, info: (info || '').trim() };
+      } else {
+        uplink.push({ name, state, info: (info || '').trim() });
+      }
     }
-    cb({ available: true, sessions });
+    cb({ available: true, sessions, uplink });
   });
 }
 
-module.exports = { renderConf, writeConf, validateCandidate, applyLive, status, birdDir };
+module.exports = { renderConf, writeConf, validateCandidate, validateUplink, applyLive, status, extractUplinkBird, birdDir };

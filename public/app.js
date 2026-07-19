@@ -406,6 +406,7 @@
   // ── network / wireguard ─────────────────────────────────────────
   async function pageNetwork() {
     const { server, peers, bgp } = await api('/wireguard' + (me.role === 'admin' ? '?all=1' : ''));
+    const up = me.role === 'admin' ? await api('/wireguard/uplink').catch(() => null) : null;
 
     const bgpCell = (p) => {
       if (!p.asn) return '<span style="color:var(--ink-3)">—</span>';
@@ -436,6 +437,34 @@
             <a class="btn small" href="/api/wireguard/server/config" download>⬇ Download wg0.conf</a>
             <a class="btn small" href="/api/wireguard/server/bird-config" download>⬇ Download bird.conf</a></div>` : ''}
         </div>
+
+        ${me.role === 'admin' ? `
+        <div class="card"><h2>Uplink — provider BGP tunnel
+          <span class="hint">${up?.enabled ? (up.status.wg.up ? (up.status.wg.handshake ? `connected · handshake ${esc(up.status.wg.handshake)}` : 'interface up · no handshake yet') : 'enabled · tunnel down') : (up?.configured.wg ? 'disconnected' : 'not configured')}</span></h2>
+          <p style="color:var(--ink-2);font-size:.9rem;margin:0 0 1rem">
+            Using a service like <b>BGPTunnel (iFog)</b> or another upstream? There <i>this server</i> is the
+            WireGuard <b>client</b>: download the <b>WireGuard config</b> and the <b>BIRD config</b> from your
+            provider's dashboard and paste them below. The server connects out, announces your prefix from
+            your ASN, and your IPv6 block lands here — ready for the Site IPv6 pool.</p>
+          ${up?.status?.sessions?.length ? `<div class="kv" style="margin-bottom:1rem">
+            ${up.status.sessions.map(s => `<span class="k">Session ${esc(s.name)}</span><span class="v">${esc(s.info || s.state)}</span>`).join('')}
+          </div>` : ''}
+          <form id="uplinkf">
+            <div class="formrow">
+              <label class="field"><span class="lbl">WireGuard config (from provider)</span>
+                <textarea name="wg_conf" rows="7" placeholder="[Interface]&#10;PrivateKey = …&#10;Address = …&#10;[Peer]&#10;Endpoint = …">${esc(up?.wg_conf || '')}</textarea>
+                <span class="help">Upload: <input type="file" class="upfile" data-target="wg_conf" accept=".conf,.txt" style="width:auto;display:inline"></span></label>
+              <label class="field"><span class="lbl">BIRD config (from provider)</span>
+                <textarea name="bird_conf" rows="7" placeholder="protocol bgp … { local … as YOURASN; neighbor … as THEIRASN; }">${esc(up?.bird_conf || '')}</textarea>
+                <span class="help">Upload: <input type="file" class="upfile" data-target="bird_conf" accept=".conf,.txt" style="width:auto;display:inline"> — parse-checked before apply; router id / kernel bits are merged safely.</span></label>
+            </div>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+              <button type="submit" class="btn primary">Save &amp; connect</button>
+              ${up?.enabled ? `<button type="button" class="btn" id="uplinkdown">Disconnect</button>` : (up?.configured.wg ? `<button type="button" class="btn" id="uplinkup">Connect</button>` : '')}
+              ${up?.configured.wg || up?.configured.bird ? `<button type="button" class="btn danger" id="uplinkdel">Remove uplink</button>` : ''}
+            </div>
+          </form>
+        </div>` : ''}
 
         <div class="card"><h2>Peers <span class="hint">${peers.length} configured</span></h2>
           ${peers.length ? `<div class="tbl-scroll"><table class="tbl">
@@ -496,6 +525,36 @@
         } catch (err) { oops(err); }
       });
     });
+    // uplink card handlers
+    main.querySelectorAll('.upfile').forEach(inp => inp.addEventListener('change', async (e) => {
+      const f = e.target.files[0];
+      if (f) main.querySelector(`textarea[name=${e.target.dataset.target}]`).value = await f.text();
+    }));
+    main.querySelector('#uplinkf')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      try {
+        const r = await api('/wireguard/uplink', { method: 'POST', body: {
+          wg_conf: form.wg_conf.value, bird_conf: form.bird_conf.value,
+        }});
+        (r.notes || []).forEach(n => toast(n));
+        toast(r.wireguard?.up ? 'Uplink saved — tunnel up' : 'Uplink saved', 'ok');
+        pageNetwork();
+      } catch (err) { oops(err); }
+    });
+    main.querySelector('#uplinkup')?.addEventListener('click', async () => {
+      try { const r = await api('/wireguard/uplink/connect', { method: 'POST' });
+        toast(r.wireguard?.up ? 'Uplink connected' : (r.wireguard?.reason || 'Could not connect'), r.wireguard?.up ? 'ok' : 'err');
+        pageNetwork(); } catch (e) { oops(e); }
+    });
+    main.querySelector('#uplinkdown')?.addEventListener('click', async () => {
+      try { await api('/wireguard/uplink/disconnect', { method: 'POST' }); toast('Uplink disconnected', 'ok'); pageNetwork(); } catch (e) { oops(e); }
+    });
+    main.querySelector('#uplinkdel')?.addEventListener('click', async () => {
+      if (!confirm('Remove the uplink configs entirely?')) return;
+      try { await api('/wireguard/uplink', { method: 'DELETE' }); toast('Uplink removed', 'ok'); pageNetwork(); } catch (e) { oops(e); }
+    });
+
     main.querySelectorAll('.bgpbtn').forEach(btn => btn.addEventListener('click', () => {
       const p = peers.find(x => String(x.id) === btn.dataset.id);
       if (!p) return;

@@ -4,6 +4,7 @@ const { requireAuth, requireAdmin } = require('../auth');
 const wg = require('../services/wireguard');
 const bird = require('../services/bird');
 const ipam = require('../services/ipam');
+const uplink = require('../services/uplink');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -177,6 +178,74 @@ router.patch('/server', requireAdmin, (req, res) => {
   if (assigned) logActivity(req.user.id, 'site.ipv6', `auto-assigned dedicated IPv6 to ${assigned} existing site(s)`);
   bird.applyLive(() => {});
   wg.applyLive((result) => res.json({ server: wg.getSettings(), wireguard: result, ipv6_assigned: assigned }));
+});
+
+// ── uplink: provider BGP tunnel (BGPTunnel/iFog-style) ─────────────
+router.get('/uplink', requireAdmin, (req, res) => {
+  const state = uplink.getState();
+  uplink.status((wgStatus) => bird.status((bgp) => res.json({
+    configured: { wg: !!state.wg, bird: !!state.bird },
+    enabled: state.enabled,
+    wg_conf: state.wg, bird_conf: state.bird,
+    status: { wg: wgStatus, sessions: bgp.available ? bgp.uplink : null },
+  })));
+});
+
+router.post('/uplink', requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const state = uplink.getState();
+  const notes = [];
+
+  const finish = () => {
+    db.prepare('UPDATE wg_settings SET uplink_enabled = 1 WHERE id = 1').run();
+    logActivity(req.user.id, 'wg.uplink.update', 'provider tunnel config updated');
+    uplink.up((wgResult) => {
+      if (!wgResult.up) notes.push(wgResult.reason);
+      bird.applyLive((birdResult) => {
+        if (!birdResult.applied && birdResult.reason) notes.push(birdResult.reason);
+        res.json({ ok: true, notes, wireguard: wgResult, bird: birdResult });
+      });
+    });
+  };
+
+  const saveWg = () => {
+    if (b.wg_conf !== undefined && String(b.wg_conf).trim()) {
+      if (!/\[Interface\]/i.test(b.wg_conf) || !/\[Peer\]/i.test(b.wg_conf)) {
+        return res.status(400).json({ error: 'That does not look like a WireGuard config ([Interface]/[Peer] sections missing)' });
+      }
+      const { conf, note } = uplink.sanitizeWgConf(b.wg_conf);
+      if (note) notes.push(note);
+      db.prepare('UPDATE wg_settings SET uplink_wg = ? WHERE id = 1').run(conf);
+    }
+    finish();
+  };
+
+  if (b.bird_conf !== undefined && String(b.bird_conf).trim()) {
+    bird.validateUplink(String(b.bird_conf).slice(0, 200_000), (v) => {
+      if (!v.ok) return res.status(400).json({ error: `BIRD config rejected:\n${v.error}` });
+      if (v.note) notes.push(v.note);
+      db.prepare('UPDATE wg_settings SET uplink_bird = ? WHERE id = 1').run(String(b.bird_conf));
+      saveWg();
+    });
+  } else saveWg();
+});
+
+router.post('/uplink/connect', requireAdmin, (req, res) => {
+  db.prepare('UPDATE wg_settings SET uplink_enabled = 1 WHERE id = 1').run();
+  logActivity(req.user.id, 'wg.uplink.connect', '');
+  uplink.up((wgResult) => bird.applyLive((birdResult) => res.json({ wireguard: wgResult, bird: birdResult })));
+});
+
+router.post('/uplink/disconnect', requireAdmin, (req, res) => {
+  db.prepare('UPDATE wg_settings SET uplink_enabled = 0 WHERE id = 1').run();
+  logActivity(req.user.id, 'wg.uplink.disconnect', '');
+  uplink.down((wgResult) => bird.applyLive((birdResult) => res.json({ wireguard: wgResult, bird: birdResult })));
+});
+
+router.delete('/uplink', requireAdmin, (req, res) => {
+  db.prepare("UPDATE wg_settings SET uplink_wg = NULL, uplink_bird = NULL, uplink_enabled = 0 WHERE id = 1").run();
+  logActivity(req.user.id, 'wg.uplink.delete', '');
+  uplink.down(() => bird.applyLive(() => res.json({ ok: true })));
 });
 
 router.get('/server/bird-config', requireAdmin, (req, res) => {

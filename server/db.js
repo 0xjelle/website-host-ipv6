@@ -96,6 +96,9 @@ addColumn('wg_settings', "site_v6_pool TEXT NOT NULL DEFAULT ''");   // IPv6 blo
 addColumn('wg_settings', "site_v6_iface TEXT NOT NULL DEFAULT ''");  // interface to attach them to (auto if empty)
 addColumn('sites', 'ipv6_addr TEXT');
 addColumn('sites', 'app_pid INTEGER');
+addColumn('wg_settings', 'uplink_wg TEXT');                          // provider WireGuard client config
+addColumn('wg_settings', 'uplink_bird TEXT');                        // provider BIRD config (as uploaded)
+addColumn('wg_settings', 'uplink_enabled INTEGER NOT NULL DEFAULT 0');
 
 function logActivity(userId, action, detail = '') {
   db.prepare('INSERT INTO activity (user_id, action, detail) VALUES (?, ?, ?)')

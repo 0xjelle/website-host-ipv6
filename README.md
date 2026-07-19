@@ -64,6 +64,15 @@ On a fresh Ubuntu Server 20.04/22.04/24.04 (or Debian 11+), as root:
 curl -fsSL https://raw.githubusercontent.com/0xjelle/website-host-ipv6/main/scripts/install.sh | sudo bash
 ```
 
+> The one-liner needs this repository to be **public**. While it is private,
+> clone with a token instead and point the installer at the local copy:
+>
+> ```bash
+> git clone https://<YOUR_TOKEN>@github.com/0xjelle/website-host-ipv6
+> cd website-host-ipv6
+> sudo REPO_URL="$PWD" bash scripts/install.sh
+> ```
+
 The installer:
 
 - installs git, WireGuard tools and Node.js 22 (via NodeSource) if missing

@@ -1,0 +1,25 @@
+services:
+  hexahost:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"        # dashboard + API + webhooks
+      - "80:8080"          # public sites (edge proxy)
+      - "51820:51820/udp"  # WireGuard
+    environment:
+      - PUBLIC_HOST=${PUBLIC_HOST:-localhost}
+      - JWT_SECRET=${JWT_SECRET:-}
+      - PROXY_PORT=8080
+      - ADMIN_PORT=3000
+    volumes:
+      - hexahost-data:/data
+    # Needed only if you want HexaHost to manage a live WireGuard
+    # interface inside the container:
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv6.conf.all.forwarding=1
+      - net.ipv4.ip_forward=1
+
+volumes:
+  hexahost-data:

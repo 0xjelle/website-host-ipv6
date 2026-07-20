@@ -1,5 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { db, logActivity } = require('../db');
 const { requireAuth } = require('../auth');
 const config = require('../config');
@@ -54,6 +56,7 @@ function publicView(site) {
     default_url: `http://${site.slug}.${config.siteBaseDomain}${config.proxyPort === 80 ? '' : ':' + config.proxyPort}`,
     webhook_url: `http://${config.publicHost}:${config.adminPort}/api/webhooks/github/${site.id}`,
     process: site.type === 'node' ? procman.status(site.id) : null,
+    sftp: { host: config.publicHost, port: config.sftpPort, folder: site.slug },
   };
 }
 
@@ -96,7 +99,13 @@ router.post('/', (req, res) => {
   ipam.assignToSite(r.lastInsertRowid); // dedicated IPv6 from the pool, if configured
   const site = db.prepare('SELECT * FROM sites WHERE id = ?').get(r.lastInsertRowid);
   logActivity(req.user.id, 'site.create', `"${site.name}" (${site.type})`);
-  if (site.repo_url) deployer.deploy(site.id, 'manual');
+  if (site.repo_url) {
+    deployer.deploy(site.id, 'manual');
+  } else {
+    // No repo: create the document root and serve it right away (upload / SFTP)
+    fs.mkdirSync(path.join(config.sitesDir, String(site.id), 'current'), { recursive: true });
+    if (site.type === 'static') db.prepare("UPDATE sites SET status = 'live' WHERE id = ?").run(site.id);
+  }
 
   const respond = (webhook) => res.status(201).json({ site: publicView(site), webhook });
   if (site.repo_url && req.body.auto_webhook !== false) {
@@ -194,6 +203,64 @@ router.get('/:id/deployments/:depId', (req, res) => {
   const dep = db.prepare('SELECT * FROM deployments WHERE id = ? AND site_id = ?').get(req.params.depId, site.id);
   if (!dep) return res.status(404).json({ error: 'Deployment not found' });
   res.json({ deployment: dep });
+});
+
+// ── per-site file manager (document root = data/sites/<id>/current) ──
+function siteRoot(site) { return path.join(config.sitesDir, String(site.id), 'current'); }
+function safePath(site, rel) {
+  const root = siteRoot(site);
+  const p = path.normalize(path.join(root, rel || ''));
+  if (p !== root && !p.startsWith(root + path.sep)) return null;
+  return p;
+}
+
+router.get('/:id/files', (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  const dir = safePath(site, req.query.path || '');
+  if (!dir) return res.status(400).json({ error: 'Invalid path' });
+  fs.mkdirSync(siteRoot(site), { recursive: true });
+  if (!fs.existsSync(dir)) return res.json({ path: req.query.path || '', entries: [] });
+  const entries = fs.readdirSync(dir).map(name => {
+    const st = fs.statSync(path.join(dir, name));
+    return { name, dir: st.isDirectory(), size: st.size, mtime: st.mtimeMs };
+  }).sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name));
+  res.json({ path: req.query.path || '', root: siteRoot(site), entries });
+});
+
+// Upload one file (raw body). ?path=relative/name.html
+router.put('/:id/files', express.raw({ type: '*/*', limit: '200mb' }), (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  if (!req.query.path) return res.status(400).json({ error: 'path is required' });
+  const dest = safePath(site, req.query.path);
+  if (!dest || dest === siteRoot(site)) return res.status(400).json({ error: 'Invalid path' });
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.writeFileSync(dest, Buffer.isBuffer(req.body) ? req.body : Buffer.from(''));
+  if (site.type === 'static' && ['new', 'failed', 'stopped'].includes(site.status)) {
+    db.prepare("UPDATE sites SET status = 'live' WHERE id = ?").run(site.id);
+  }
+  logActivity(req.user.id, 'site.upload', `"${site.name}" ← ${req.query.path}`);
+  res.json({ ok: true });
+});
+
+router.post('/:id/files/mkdir', (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  const dir = safePath(site, req.body?.path);
+  if (!dir || dir === siteRoot(site)) return res.status(400).json({ error: 'Invalid path' });
+  fs.mkdirSync(dir, { recursive: true });
+  res.json({ ok: true });
+});
+
+router.delete('/:id/files', (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  const target = safePath(site, req.query.path);
+  if (!target || target === siteRoot(site)) return res.status(400).json({ error: 'Invalid path' });
+  fs.rmSync(target, { recursive: true, force: true });
+  logActivity(req.user.id, 'site.delete-file', `"${site.name}" ✕ ${req.query.path}`);
+  res.json({ ok: true });
 });
 
 router.delete('/:id', (req, res) => {

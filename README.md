@@ -139,6 +139,27 @@ Static sites can set a *build command* (`npm run build`) and *serve subfolder*
 (`dist`). Node apps get `PORT` injected — listen on `process.env.PORT` and
 you're live; `npm start` is the default start command.
 
+### Upload files directly (no Git needed) + SFTP
+
+Create a site **without** a repository and it becomes an upload site with its
+own document root you manage two ways:
+
+- **Files tab** in the dashboard — drag & drop files or whole folders, browse
+  the tree, delete, create folders. Uploads go live immediately.
+- **Built-in SFTP** — connect with FileZilla / WinSCP / the `sftp` CLI using
+  your **account email + password**; each of your sites appears as a top-level
+  folder. Default port `2222`:
+
+  ```bash
+  sftp -P 2222 you@example.com@your-server
+  # then:  cd my-site   and drop your files
+  ```
+
+  The SFTP server is embedded (no system users, no sshd config); each user is
+  sandboxed to their own sites' directories. Override the port with
+  `SFTP_PORT`. Sites that deploy from Git can still be browsed here, but a
+  redeploy overwrites the directory.
+
 ### Private repositories (no need to make anything public)
 
 Two ways:
@@ -238,6 +259,7 @@ Give websites their own addresses from your block:
 | `JWT_SECRET` | auto-generated | Session signing key (persisted in `DATA_DIR`) |
 | `DATA_DIR` | `./data` | SQLite DB, site checkouts, WireGuard configs |
 | `APP_PORT_BASE` | `20100` | First internal port for Node.js apps |
+| `SFTP_PORT` | `2222` | Port for the built-in SFTP server |
 
 **TLS:** the edge proxy speaks plain HTTP. For HTTPS put Caddy or nginx with
 Let's Encrypt in front (`reverse_proxy localhost:8080` with Caddy is two lines

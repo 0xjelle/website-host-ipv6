@@ -39,6 +39,7 @@ require('./services/bird').writeConf();  // write bird.conf (BGP over tunnel)
 require('./services/ipam').applyAll();   // re-attach dedicated site IPv6 addresses
 require('./services/uplink').applyBoot(); // reconnect provider BGP tunnel if configured
 require('./services/metrics').start();    // system + traffic sampling for charts
+require('./services/sftp').start();       // built-in SFTP server for file uploads
 
 // Resume node apps that were live before the restart (reaping any process
 // groups a previous platform run left behind so ports are free)

@@ -312,6 +312,21 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .88rem; }
 .modal { animation: modalin .18s ease; }
 @keyframes modalin { from { opacity: 0; transform: translateY(10px) scale(.98); } }
 
+/* ── file manager ─────────────────────────────────────────────────── */
+.dropzone {
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 1.6rem 1rem; text-align: center; color: var(--ink-2);
+  transition: border-color .15s, background .15s; margin-bottom: 1rem;
+}
+.dropzone.over { border-color: var(--accent); background: rgba(124,108,255,.06); }
+.dropzone .dz-inner { font-size: .92rem; }
+.linklike { color: var(--accent-2); cursor: pointer; }
+.linklike:hover { text-decoration: underline; }
+.dz-bar { height: 6px; border-radius: 3px; background: var(--bg-2); margin-top: .9rem; overflow: hidden; }
+.dz-fill { height: 100%; width: 0; background: var(--grad); transition: width .2s; }
+#filelist .tbl td { padding: .5rem .6rem; }
+#filelist a { color: var(--ink); }
+
 @media (max-width: 860px) {
   .shell { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; }

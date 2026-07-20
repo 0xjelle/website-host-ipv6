@@ -43,6 +43,12 @@
     if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
     return `${Math.floor(sec / 86400)}d ago`;
   };
+  const fmtBytes = (n) => {
+    if (n < 1024) return `${n} B`;
+    if (n < 1048576) return `${(n / 1024).toFixed(1)} KB`;
+    if (n < 1073741824) return `${(n / 1048576).toFixed(1)} MB`;
+    return `${(n / 1073741824).toFixed(2)} GB`;
+  };
   const uptimeStr = (sec) => {
     if (sec < 60) return `${sec}s`;
     if (sec < 3600) return `${Math.floor(sec / 60)}m`;
@@ -451,6 +457,7 @@
         </div>
         <div class="tabs">
           ${tabBtn('deploys', 'Deployments')}
+          ${tabBtn('files', 'Files')}
           ${tabBtn('github', 'GitHub')}
           ${site.type === 'node' ? tabBtn('logs', 'Runtime logs') : ''}
           ${tabBtn('settings', 'Settings')}
@@ -582,6 +589,103 @@
           else toast(`Not created: ${webhook.reason}`, /already/.test(webhook.reason) ? 'ok' : 'err');
         } catch (err) { oops(err); }
       });
+    }
+
+    if (tab === 'files') {
+      let cwd = '';
+      const card = h(`<div class="card">
+        <h2>Files <span class="hint" id="fpath">/</span></h2>
+        <div class="dropzone" id="drop">
+          <div class="dz-inner">⬆ <b>Drag &amp; drop</b> files or folders here, or
+            <label class="linklike">browse<input type="file" id="fileinput" multiple hidden></label> ·
+            <label class="linklike">folder<input type="file" id="dirinput" webkitdirectory hidden></label></div>
+          <div class="dz-bar" id="dzbar" style="display:none"><div class="dz-fill" id="dzfill"></div></div>
+        </div>
+        <div id="filelist"></div>
+      </div>
+      <div class="card"><h2>Upload over SFTP <span class="hint">FileZilla · WinSCP · sftp CLI</span></h2>
+        <div class="kv">
+          <span class="k">Host</span><span class="v">${esc(site.sftp.host)}</span>
+          <span class="k">Port</span><span class="v">${site.sftp.port}</span>
+          <span class="k">Username</span><span class="v">${esc(me.email)}</span>
+          <span class="k">Password</span><span class="v">your account password</span>
+          <span class="k">Your files are in</span><span class="v">/${esc(site.sftp.folder)}/</span>
+        </div>
+        <div class="copybox" style="margin-top:.8rem"><code>sftp -P ${site.sftp.port} ${esc(me.email)}@${esc(site.sftp.host)}</code>
+          <button class="cp" onclick="_copy('sftp -P ${site.sftp.port} ${esc(me.email)}@${esc(site.sftp.host)}')">⧉</button></div>
+        <span class="help">After connecting, <code class="code">cd ${esc(site.sftp.folder)}</code> and drop your website files there.
+          ${site.repo_url ? '<b>Note:</b> this site deploys from Git — a redeploy overwrites uploaded files.' : ''}</span>
+      </div>`);
+      body.appendChild(card);
+      const q=(sel)=>body.querySelector(sel);
+      const fpath = q('#fpath');
+      const list = q('#filelist');
+
+      const loadFiles = async () => {
+        fpath.textContent = '/' + cwd;
+        try {
+          const { entries } = await api(`/sites/${id}/files?path=${encodeURIComponent(cwd)}`);
+          list.innerHTML = `<table class="tbl">
+            ${cwd ? `<tr class="frow" data-up="1"><td>📁 <a href="#">..</a></td><td></td><td></td></tr>` : ''}
+            ${entries.length || cwd ? '' : '<tr><td colspan="3" style="color:var(--ink-3);padding:1.2rem;text-align:center">Empty — drop files above to get started.</td></tr>'}
+            ${entries.map(e => `<tr>
+              <td>${e.dir ? '📁' : '📄'} ${e.dir ? `<a href="#" class="fdir" data-name="${esc(e.name)}">${esc(e.name)}</a>` : esc(e.name)}</td>
+              <td style="color:var(--ink-3)">${e.dir ? '' : fmtBytes(e.size)}</td>
+              <td style="text-align:right"><button class="btn small danger fdel" data-name="${esc(e.name)}">✕</button></td></tr>`).join('')}
+          </table>`;
+          list.querySelector('[data-up]')?.addEventListener('click', (ev) => { ev.preventDefault(); cwd = cwd.split('/').slice(0, -1).join('/'); loadFiles(); });
+          list.querySelectorAll('.fdir').forEach(a => a.addEventListener('click', (ev) => { ev.preventDefault(); cwd = (cwd ? cwd + '/' : '') + a.dataset.name; loadFiles(); }));
+          list.querySelectorAll('.fdel').forEach(b => b.addEventListener('click', async () => {
+            if (!confirm(`Delete ${b.dataset.name}?`)) return;
+            try { await api(`/sites/${id}/files?path=${encodeURIComponent((cwd ? cwd + '/' : '') + b.dataset.name)}`, { method: 'DELETE' }); loadFiles(); } catch (e) { oops(e); }
+          }));
+        } catch (e) { oops(e); }
+      };
+
+      const uploadFiles = async (files) => {
+        const bar = q('#dzbar'), fill = q('#dzfill');
+        bar.style.display = 'block'; let done = 0;
+        for (const f of files) {
+          const rel = (f.webkitRelativePath || f.name);
+          const dest = (cwd ? cwd + '/' : '') + rel;
+          try {
+            await fetch(`/api/sites/${id}/files?path=${encodeURIComponent(dest)}`, {
+              method: 'PUT', credentials: 'same-origin',
+              headers: { 'Content-Type': f.type || 'application/octet-stream' }, body: f,
+            }).then(r => { if (!r.ok) throw new Error('upload failed: ' + rel); });
+          } catch (e) { oops(e); }
+          fill.style.width = Math.round(++done / files.length * 100) + '%';
+        }
+        setTimeout(() => { bar.style.display = 'none'; fill.style.width = '0'; }, 600);
+        toast(`Uploaded ${files.length} file${files.length === 1 ? '' : 's'}`, 'ok');
+        loadFiles();
+      };
+
+      const drop = q('#drop');
+      ['dragover', 'dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+      ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+      drop.addEventListener('drop', async (e) => {
+        const items = [...(e.dataTransfer.items || [])];
+        const walk = async (entry, base = '') => {
+          if (entry.isFile) return new Promise(r => entry.file(f => { Object.defineProperty(f, 'webkitRelativePath', { value: base + f.name }); r([f]); }));
+          if (entry.isDirectory) {
+            const reader = entry.createReader();
+            const ents = await new Promise(r => reader.readEntries(r));
+            const nested = await Promise.all(ents.map(en => walk(en, base + entry.name + '/')));
+            return nested.flat();
+          }
+          return [];
+        };
+        const entries = items.map(i => i.webkitGetAsEntry?.()).filter(Boolean);
+        if (entries.length) {
+          const files = (await Promise.all(entries.map(en => walk(en)))).flat();
+          if (files.length) return uploadFiles(files);
+        }
+        if (e.dataTransfer.files.length) uploadFiles([...e.dataTransfer.files]);
+      });
+      q('#fileinput').addEventListener('change', e => uploadFiles([...e.target.files]));
+      q('#dirinput').addEventListener('change', e => uploadFiles([...e.target.files]));
+      loadFiles();
     }
 
     if (tab === 'logs') {

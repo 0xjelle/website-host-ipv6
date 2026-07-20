@@ -60,5 +60,6 @@ module.exports = {
     return /^\d{1,3}(\.\d{1,3}){3}$/.test(h) ? `${h}.sslip.io` : h;
   })(),
   appPortBase: parseInt(process.env.APP_PORT_BASE || '20100', 10),
+  sftpPort: parseInt(process.env.SFTP_PORT || '2222', 10),
   jwtSecret,
 };

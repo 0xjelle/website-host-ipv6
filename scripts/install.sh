@@ -176,8 +176,9 @@ step "Firewall"
 if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q 'Status: active'; then
   run "ufw rule failed" ufw allow "$PROXY_PORT/tcp"
   run "ufw rule failed" ufw allow "$ADMIN_PORT/tcp"
+  run "ufw rule failed" ufw allow 2222/tcp
   run "ufw rule failed" ufw allow 51820/udp
-  ok "opened $PROXY_PORT/tcp · $ADMIN_PORT/tcp · 51820/udp"
+  ok "opened $PROXY_PORT/tcp · $ADMIN_PORT/tcp · 2222/tcp (sftp) · 51820/udp"
 else
   skip "ufw not active — nothing to open"
 fi

@@ -312,6 +312,19 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .88rem; }
 .modal { animation: modalin .18s ease; }
 @keyframes modalin { from { opacity: 0; transform: translateY(10px) scale(.98); } }
 
+/* ── online health indicator ──────────────────────────────────────── */
+.health { font-size: .85rem; font-weight: 700; line-height: 1; }
+.health.up { color: var(--good); }
+.health.down { color: var(--ink-3); }
+.site-card .s-top .health { margin-right: .35rem; }
+.health.up { animation: healthpop .3s ease; }
+@keyframes healthpop { from { transform: scale(0); } 60% { transform: scale(1.4); } }
+.health-badge {
+  display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem;
+  color: var(--ink-2); padding: .2rem .6rem; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--border);
+}
+
 /* ── file manager ─────────────────────────────────────────────────── */
 .dropzone {
   border: 2px dashed var(--border); border-radius: var(--radius);

@@ -293,7 +293,8 @@
         ${sites.length ? `<div class="site-grid">${sites.map(s => `
           <div class="site-card" data-id="${s.id}">
             <div class="s-top"><span class="type-badge ${s.type}">${s.type}</span>
-              <span class="s-name">${esc(s.name)}</span>${pill(s.status)}</div>
+              <span class="s-name">${esc(s.name)}</span>
+              <span class="health" data-health="${s.id}" title="checking…">○</span>${pill(s.status)}</div>
             <div class="s-domain">${esc(s.domains[0] || s.default_domain)}</div>
             ${s.ipv6_addr ? `<div class="s-domain" style="color:var(--ink-3)">⬡ ${esc(s.ipv6_addr)}</div>` : ''}
             <div class="s-meta">
@@ -307,6 +308,16 @@
     main.querySelector('#ghconnect').addEventListener('click', () => githubModal(ghState));
     main.querySelectorAll('.site-card').forEach(el =>
       el.addEventListener('click', () => { location.hash = `#/sites/${el.dataset.id}`; }));
+    // live online indicator (green check when the site is actually serving)
+    if (sites.length) api('/sites/health').then(({ health }) => {
+      for (const [id, hstate] of Object.entries(health)) {
+        const el = main.querySelector(`[data-health="${id}"]`);
+        if (!el) continue;
+        el.textContent = hstate.online ? '✓' : '●';
+        el.className = 'health ' + (hstate.online ? 'up' : 'down');
+        el.title = hstate.online ? `online${hstate.ms ? ` · ${hstate.ms}ms` : ''}` : `offline${hstate.reason ? ` · ${hstate.reason}` : ''}`;
+      }
+    }).catch(() => {});
   }
 
   function githubModal(ghState) {
@@ -437,6 +448,7 @@
         <div class="page-head">
           <h1>${esc(site.name)}</h1>
           <span class="type-badge ${site.type}">${site.type}</span> ${pill(site.status)}
+          <span class="health-badge" id="healthbadge" title="checking…"><span class="health down">○</span> checking…</span>
           <div class="grow"></div>
           ${site.repo_url ? `<button class="btn" id="deploy">🚀 Deploy now</button>` : ''}
           ${site.status === 'live' || site.status === 'deploying'
@@ -468,6 +480,15 @@
     main.querySelector('#back').addEventListener('click', () => { location.hash = '#/sites'; });
     main.querySelectorAll('.tab').forEach(el =>
       el.addEventListener('click', () => pageSiteDetail(id, el.dataset.tab)));
+    // live online badge
+    api(`/sites/${id}/health`).then(hst => {
+      const badge = main.querySelector('#healthbadge');
+      if (!badge) return;
+      badge.innerHTML = hst.online
+        ? `<span class="health up">✓</span> Online${hst.ms ? ` · ${hst.ms}ms` : ''}`
+        : `<span class="health down">●</span> Offline${hst.reason ? ` · ${esc(hst.reason)}` : ''}`;
+      badge.title = badge.textContent.trim();
+    }).catch(() => {});
     main.querySelector('#deploy')?.addEventListener('click', async () => {
       try { await api(`/sites/${id}/deploy`, { method: 'POST' }); toast('Deployment started', 'ok'); setTimeout(() => pageSiteDetail(id, 'deploys'), 600); }
       catch (e) { oops(e); }

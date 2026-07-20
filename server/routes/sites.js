@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
 const { db, logActivity } = require('../db');
 const { requireAuth } = require('../auth');
 const config = require('../config');
@@ -67,6 +68,36 @@ router.get('/', (req, res) => {
     ? db.prepare('SELECT s.*, u.email AS owner_email FROM sites s JOIN users u ON u.id = s.user_id ORDER BY s.id DESC').all()
     : db.prepare('SELECT * FROM sites WHERE user_id = ? ORDER BY id DESC').all(req.user.id);
   res.json({ sites: rows.map(publicView) });
+});
+
+// Is a site actually serving right now? node: the app responds; static: it's
+// live and has files to serve.
+function checkHealth(site) {
+  return new Promise((resolve) => {
+    if (site.status !== 'live') return resolve({ online: false, reason: site.status });
+    if (site.type === 'node') {
+      const started = Date.now();
+      const req = http.get({ host: '127.0.0.1', port: site.app_port, path: '/', timeout: 2000 }, (r) => {
+        r.destroy();
+        resolve({ online: (r.statusCode || 0) < 500, status: r.statusCode, ms: Date.now() - started });
+      });
+      req.on('error', () => resolve({ online: false, reason: 'not responding' }));
+      req.on('timeout', () => { req.destroy(); resolve({ online: false, reason: 'timeout' }); });
+    } else {
+      const dir = path.join(siteRoot(site), site.static_dir || '');
+      const ok = fs.existsSync(path.join(dir, 'index.html')) || (fs.existsSync(dir) && fs.readdirSync(dir).length > 0);
+      resolve({ online: ok, reason: ok ? undefined : 'no files to serve' });
+    }
+  });
+}
+
+// Batch health for the requester's sites (registered before '/:id').
+router.get('/health', async (req, res) => {
+  const rows = req.user.role === 'admin' && req.query.all === '1'
+    ? db.prepare('SELECT * FROM sites').all()
+    : db.prepare('SELECT * FROM sites WHERE user_id = ?').all(req.user.id);
+  const results = await Promise.all(rows.map(async s => [s.id, await checkHealth(s)]));
+  res.json({ health: Object.fromEntries(results) });
 });
 
 router.post('/', (req, res) => {
@@ -195,6 +226,12 @@ router.get('/:id/logs', (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;
   res.json({ logs: procman.logs(site.id) });
+});
+
+router.get('/:id/health', async (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  res.json(await checkHealth(site));
 });
 
 router.get('/:id/deployments/:depId', (req, res) => {

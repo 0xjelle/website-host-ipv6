@@ -41,6 +41,9 @@ function writeWgConf() {
 function up(cb) {
   const p = writeWgConf();
   if (!p) return cb({ up: false, reason: 'No uplink WireGuard config uploaded yet' });
+  if (typeof process.getuid === 'function' && process.getuid() !== 0) {
+    return cb({ up: false, reason: 'Hosting is not running as root, so it cannot manage WireGuard. Start it via the service (sudo systemctl restart hosting) instead of npm start.' });
+  }
   execFile('wg-quick', ['up', p], (err, stdout, stderr) => {
     const out = `${stdout || ''}${stderr || ''}`;
     if (err && !/already exists/i.test(out)) {

@@ -176,6 +176,9 @@ function syncToDisk() {
 
 function applyLive(cb) {
   const confPath = syncToDisk();
+  if (typeof process.getuid === 'function' && process.getuid() !== 0) {
+    return cb({ applied: false, reason: 'config written to disk; not running as root so it was not applied live (use the systemd service)', confPath });
+  }
   execFile('wg-quick', ['strip', confPath], (err, stripped) => {
     if (err) return cb({ applied: false, reason: 'wg-quick not available — config written to disk only', confPath });
     const tmp = path.join(config.wgDir, 'wg0.stripped.conf');

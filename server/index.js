@@ -18,7 +18,11 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/sites', require('./routes/sites'));
 app.use('/api/wireguard', require('./routes/wireguard'));
 app.use('/api/github', require('./routes/github'));
+app.use('/api/status', require('./routes/status')); // public — no auth
 app.use('/api', require('./routes/admin'));
+
+// Public status page
+app.get('/status', (req, res) => res.sendFile(path.join(config.root, 'public', 'status.html')));
 
 // Dashboard SPA
 app.use(express.static(path.join(config.root, 'public')));

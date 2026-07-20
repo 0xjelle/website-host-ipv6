@@ -5,6 +5,7 @@ const path = require('path');
 const config = require('../config');
 const { db, logActivity } = require('../db');
 const procman = require('./procman');
+const gh = require('./github');
 
 const running = new Set(); // site ids with an in-flight deploy
 
@@ -57,12 +58,25 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
     db.prepare('UPDATE deployments SET log = ? WHERE id = ?').run(log, depId);
   };
 
+  // Post the deploy result back to GitHub as a commit status (the ✓/✗ next
+  // to the commit). Best-effort; needs a token, repo name and a full SHA.
+  let fullSha = commit.fullSha || null;
+  const ghStatus = (state, description) => {
+    if (!fullSha) return;
+    const token = tokenForSite(site);
+    const full = gh.repoFullName(site.repo_url);
+    if (!token || !full) return;
+    gh.setCommitStatus(token, full, fullSha, state, description,
+      `http://${config.publicHost}:${config.adminPort}/#/sites/${siteId}`);
+  };
+
   const finish = (ok, msg) => {
     out(`\n${ok ? '✔' : '✖'} ${msg}\n`);
     db.prepare("UPDATE deployments SET status = ?, finished_at = datetime('now') WHERE id = ?")
       .run(ok ? 'success' : 'failed', depId);
     db.prepare('UPDATE sites SET status = ? WHERE id = ?').run(ok ? 'live' : 'failed', siteId);
     logActivity(site.user_id, ok ? 'deploy.success' : 'deploy.failed', `"${site.name}" (${trigger})`);
+    ghStatus(ok ? 'success' : 'failure', msg);
     running.delete(siteId);
   };
 
@@ -87,17 +101,20 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
           return finish(false, 'git clone failed — check the URL, branch and access token');
         }
       }
-      const sha = await new Promise(res => {
+      const revParse = (fmt) => new Promise(res => {
         let s = '';
-        const c = spawn('git', ['-C', workDir, 'rev-parse', '--short', 'HEAD']);
+        const c = spawn('git', ['-C', workDir, 'rev-parse', ...fmt, 'HEAD']);
         c.stdout.on('data', d => s += d.toString());
         c.on('exit', () => res(s.trim()));
         c.on('error', () => res(''));
       });
+      const sha = await revParse(['--short']);
+      fullSha = (await revParse([])) || fullSha;
       if (sha) {
         out(`   at commit ${sha}\n`);
         db.prepare('UPDATE deployments SET commit_sha = COALESCE(commit_sha, ?) WHERE id = ?').run(sha, depId);
       }
+      ghStatus('pending', 'Deploying…'); // now that we have the SHA
 
       const hasPkg = fs.existsSync(path.join(workDir, 'package.json'));
 

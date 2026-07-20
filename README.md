@@ -135,6 +135,17 @@ Dashboard on `:3000`, public sites on `:80`, WireGuard on `:51820/udp`.
    `application/json`, just the push event.
 4. Every push to `main` now deploys automatically. 🎉
 
+**Deploy status on GitHub:** when your GitHub account (or a per-site token) is
+connected, each deploy posts a commit status back to GitHub — the commit shows
+a **pending → ✓ success / ✗ failure** check (context "Hosting / deploy") that
+links to the site in your dashboard, just like other CI/hosting integrations.
+
+**Built-in status page:** a public page at **`/status`** (linked from the
+sidebar) shows every hosted site and whether it's currently up — an overall
+banner (operational / partial / major outage), online/offline counts, and a
+per-site list with live status dots. It refreshes every 30s and exposes only
+site names, types and public URLs (no IPs, owners or internal ports).
+
 Static sites can set a *build command* (`npm run build`) and *serve subfolder*
 (`dist`). Node apps get `PORT` injected — listen on `process.env.PORT` and
 you're live; `npm start` is the default start command.

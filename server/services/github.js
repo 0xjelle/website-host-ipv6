@@ -79,4 +79,28 @@ async function createWebhook(token, fullName, url, secret) {
   }
 }
 
-module.exports = { getUser, listRepos, createWebhook };
+// Post a commit status (the ✓/✗ shown next to a commit on GitHub).
+// state: pending | success | failure | error
+async function setCommitStatus(token, fullName, sha, state, description, targetUrl) {
+  try {
+    const res = await gh(token, `/repos/${fullName}/statuses/${sha}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        state,
+        context: 'Hosting / deploy',
+        description: (description || '').slice(0, 140),
+        target_url: targetUrl || undefined,
+      }),
+    });
+    return { ok: res.status === 201 };
+  } catch (e) {
+    return { ok: false, reason: e.message };
+  }
+}
+
+const repoFullName = (url) => {
+  const m = String(url || '').match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?\/?$/i);
+  return m ? m[1] : null;
+};
+
+module.exports = { getUser, listRepos, createWebhook, setCommitStatus, repoFullName };

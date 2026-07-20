@@ -55,6 +55,26 @@ router.get('/overview', (req, res) => {
   res.json({ stats, recent, bandwidth });
 });
 
+// Per-site traffic (requests/min or bytes/min) for the traffic-per-website
+// chart. Scoped to the requester's sites (admins: all).
+router.get('/metrics/per-site', (req, res) => {
+  const admin = req.user.role === 'admin';
+  const rows = admin
+    ? db.prepare('SELECT id, name FROM sites').all()
+    : db.prepare('SELECT id, name FROM sites WHERE user_id = ?').all(req.user.id);
+  const names = Object.fromEntries(rows.map(r => [r.id, r.name]));
+  const siteIds = admin ? null : rows.map(r => r.id);
+  const metric = req.query.metric === 'bytes' ? 'bytes' : 'req';
+  const series = metrics.perSiteSeries(siteIds, metric, 60);
+  const sites = Object.entries(series).map(([id, points]) => ({
+    id: Number(id),
+    name: names[id] || `site ${id}`,
+    total: points.reduce((s, p) => s + p.n, 0),
+    points,
+  })).filter(s => s.total > 0).sort((a, b) => b.total - a.total);
+  res.json({ metric, sites });
+});
+
 // ── admin-only endpoints ────────────────────────────────────────────
 router.use(requireAdmin);
 

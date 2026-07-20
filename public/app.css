@@ -272,8 +272,19 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .88rem; }
   box-shadow: 0 6px 18px rgba(0,0,0,.35);
 }
 .chart-empty { color: var(--ink-3); font-size: .85rem; padding: 2.2rem 0; text-align: center; }
-.chart-legend { display: flex; gap: 1.1rem; margin-top: .5rem; font-size: .78rem; color: var(--ink-2); }
-.chart-legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: .35rem; vertical-align: -1px; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 1.1rem; margin-top: .5rem; font-size: .78rem; color: var(--ink-2); }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: .35rem; vertical-align: -1px; }
+.chart-tip .swatch { margin-right: .3rem; }
+.chart.tall svg { height: 230px; }
+
+/* segmented metric toggle */
+.seg { display: inline-flex; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+.seg button {
+  border: 0; background: transparent; color: var(--ink-2); cursor: pointer;
+  font: inherit; font-size: .78rem; font-weight: 500; padding: .28rem .7rem; border-radius: 6px;
+}
+.seg button.active { background: var(--accent); color: #fff; }
+.seg button:not(.active):hover { color: var(--ink); }
 
 /* ── polish ───────────────────────────────────────────────────────── */
 .main > div { animation: pagein .25s ease; }

@@ -68,6 +68,59 @@
 
   // ── charts (SVG, no deps) ───────────────────────────────────────
   const fmtTime = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // validated categorical palette (dark surface) — dataviz skill, fixed order
+  const SERIES_COLORS = ['#3987e5', '#008300', '#d55181', '#c98500', '#199e70', '#d95926', '#9085e9', '#e66767'];
+
+  // Multi-series line chart with legend + crosshair tooltip. series:
+  // [{ id, name, color, points:[{t,n}] }] (all sharing the same time axis).
+  function multiLineChart(el, series, { unit = '', fmtVal = (v) => v + unit, fmtAxis = null } = {}) {
+    const axisLabel = fmtAxis || ((v) => (v >= 10 ? Math.round(v) : v.toFixed(1)));
+    if (!series.length || series.every(s => s.points.length < 2)) {
+      el.innerHTML = `<div class="chart-empty">No traffic yet — this fills in as visitors arrive.</div>`;
+      return;
+    }
+    const W = 680, H = 190, PL = fmtAxis ? 60 : 40, PB = 18, PT = 8, PR = 8;
+    const xs = series[0].points.map(p => p.t);
+    const x0 = xs[0], x1 = xs[xs.length - 1];
+    const yMax = Math.max(1, ...series.flatMap(s => s.points.map(p => p.n))) * 1.15;
+    const X = (t) => PL + (t - x0) / (x1 - x0 || 1) * (W - PL - PR);
+    const Y = (v) => PT + (1 - v / yMax) * (H - PT - PB);
+    const grid = [0.5, 1].map(f => yMax * f);
+    const paths = series.map(s => {
+      const d = s.points.map((p, i) => `${i ? 'L' : 'M'}${X(p.t).toFixed(1)},${Y(p.n).toFixed(1)}`).join('');
+      return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`;
+    }).join('');
+    el.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        ${grid.map(v => `<line x1="${PL}" y1="${Y(v)}" x2="${W - PR}" y2="${Y(v)}" class="grid"/>
+          <text x="${PL - 6}" y="${Y(v) + 3}" class="axis" text-anchor="end">${axisLabel(v)}</text>`).join('')}
+        <line x1="${PL}" y1="${Y(0)}" x2="${W - PR}" y2="${Y(0)}" class="grid base"/>
+        <text x="${PL}" y="${H - 4}" class="axis">${fmtTime(x0)}</text>
+        <text x="${W - PR}" y="${H - 4}" class="axis" text-anchor="end">${fmtTime(x1)}</text>
+        ${paths}
+        <line class="xhair" y1="${PT}" y2="${Y(0)}" style="display:none"/>
+        <g class="dots" style="display:none">${series.map(s => `<circle r="3.5" fill="${s.color}" stroke="var(--panel)" stroke-width="2"/>`).join('')}</g>
+      </svg>
+      <div class="chart-legend">${series.map(s => `<span><span class="swatch" style="background:${s.color}"></span>${esc(s.name)}</span>`).join('')}</div>
+      <div class="chart-tip" style="display:none"></div>`;
+    const svg = el.querySelector('svg'), tip = el.querySelector('.chart-tip');
+    const xhair = svg.querySelector('.xhair'), dots = [...svg.querySelector('.dots').children];
+    svg.addEventListener('mousemove', (e) => {
+      const r = svg.getBoundingClientRect();
+      const t = x0 + ((e.clientX - r.left) / r.width * W - PL) / (W - PL - PR) * (x1 - x0);
+      let idx = 0, best = Infinity;
+      xs.forEach((xt, i) => { const d = Math.abs(xt - t); if (d < best) { best = d; idx = i; } });
+      const tx = X(xs[idx]);
+      xhair.setAttribute('x1', tx); xhair.setAttribute('x2', tx);
+      series.forEach((s, i) => { dots[i].setAttribute('cx', tx); dots[i].setAttribute('cy', Y(s.points[idx].n)); });
+      xhair.style.display = svg.querySelector('.dots').style.display = tip.style.display = '';
+      tip.innerHTML = `<div style="color:var(--ink-3);margin-bottom:.2rem">${fmtTime(xs[idx])}</div>` +
+        series.filter(s => s.points[idx].n > 0).map(s => `<div><span class="swatch" style="background:${s.color}"></span>${esc(s.name)}: <b>${fmtVal(s.points[idx].n)}</b></div>`).join('') || '<div style="color:var(--ink-3)">no traffic</div>';
+      const px = (tx / W) * r.width;
+      tip.style.left = Math.min(Math.max(px, 70), r.width - 90) + 'px';
+    });
+    svg.addEventListener('mouseleave', () => { xhair.style.display = svg.querySelector('.dots').style.display = tip.style.display = 'none'; });
+  }
 
   // Smooth single-series line/area chart with crosshair tooltip.
   function lineChart(el, points, { color = 'var(--accent)', unit = '', maxY = null, label = '' } = {}) {
@@ -218,6 +271,7 @@
       <aside class="sidebar">
         ${nav('overview', '◈', 'Overview')}
         ${nav('sites', '▤', 'Sites')}
+        ${nav('traffic', '📈', 'Traffic')}
         ${nav('certs', '🔒', 'Certificates')}
         ${nav('network', '⇄', 'Network / VPN')}
         ${me.role === 'admin' ? `
@@ -292,6 +346,85 @@
         if (t && bandwidth) t.textContent = `${fmtBytes(bandwidth.total)} total served`;
       } catch {}
     }, 5000);
+  }
+
+  // ── traffic per website ─────────────────────────────────────────
+  // Colour follows the site (not its rank), so a site keeps its hue as the
+  // ranking shifts or the metric toggles. First-seen sites (sorted by id)
+  // claim the next palette slot.
+  const trafficColors = new Map();
+  function colorFor(id) {
+    if (!trafficColors.has(id)) trafficColors.set(id, SERIES_COLORS[trafficColors.size % SERIES_COLORS.length]);
+    return trafficColors.get(id);
+  }
+
+  async function pageTraffic() {
+    let metric = 'req';
+    const c = h(`
+      <div>
+        <div class="page-head"><h1>Traffic per website</h1>
+          <div class="sub">Requests and bandwidth for each of your sites — last hour, per minute.</div></div>
+        <div class="card">
+          <h2 style="display:flex;align-items:center;gap:.6rem">
+            <span id="tr-title">Requests</span>
+            <span class="hint" id="tr-hint" style="margin:0">per minute · last hour</span>
+            <div class="seg" id="tr-toggle" style="margin-left:auto">
+              <button data-m="req" class="active">Requests</button>
+              <button data-m="bytes">Bandwidth</button>
+            </div>
+          </h2>
+          <div class="chart tall" id="ch-persite"></div>
+        </div>
+        <div class="card">
+          <h2>Sites <span class="hint">totals over the last hour</span></h2>
+          <div id="tr-table"></div>
+        </div>
+      </div>`);
+    const main = shell('traffic', c);
+    const chartEl = main.querySelector('#ch-persite');
+    const tableEl = main.querySelector('#tr-table');
+
+    async function load() {
+      const { sites } = await api(`/metrics/per-site?metric=${metric}`);
+      // stable id order first, so colours are assigned deterministically
+      [...sites].sort((a, b) => a.id - b.id).forEach(s => colorFor(s.id));
+      let series = sites.map(s => ({ id: s.id, name: s.name, color: colorFor(s.id), points: s.points }));
+      // 9th+ series folds into "Other" (dataviz: never cycle hues)
+      if (series.length > 8) {
+        const keep = series.slice(0, 7);
+        const rest = series.slice(7);
+        const len = rest[0].points.length;
+        const merged = Array.from({ length: len }, (_, i) => ({
+          t: rest[0].points[i].t, n: rest.reduce((s, r) => s + r.points[i].n, 0),
+        }));
+        series = [...keep, { id: -1, name: `Other (${rest.length} sites)`, color: 'var(--ink-3)', points: merged }];
+      }
+      const isBytes = metric === 'bytes';
+      const fmtVal = isBytes ? (v) => fmtBytes(v) : (v) => `${v} req`;
+      multiLineChart(chartEl, series, { fmtVal, fmtAxis: isBytes ? (v) => fmtBytes(v) : null });
+      main.querySelector('#tr-title').textContent = isBytes ? 'Bandwidth' : 'Requests';
+      main.querySelector('#tr-hint').textContent = isBytes ? 'bytes/min · last hour' : 'per minute · last hour';
+      tableEl.innerHTML = sites.length ? `<div class="tbl-scroll"><table class="tbl">
+        <tr><th></th><th>Site</th><th style="text-align:right">${isBytes ? 'Served' : 'Requests'}</th></tr>
+        ${sites.map(s => `<tr>
+          <td style="width:1.4rem"><span class="swatch" style="background:${colorFor(s.id)}"></span></td>
+          <td><a href="#/sites/${s.id}">${esc(s.name)}</a></td>
+          <td class="mono" style="text-align:right">${isBytes ? fmtBytes(s.total) : s.total}</td></tr>`).join('')}
+      </table></div>` : `<div class="empty"><div class="big">📈</div>No traffic in the last hour yet.</div>`;
+    }
+
+    main.querySelectorAll('#tr-toggle button').forEach(b =>
+      b.addEventListener('click', () => {
+        metric = b.dataset.m;
+        main.querySelectorAll('#tr-toggle button').forEach(x => x.classList.toggle('active', x === b));
+        load().catch(oops);
+      }));
+
+    await load();
+    const timer = setInterval(() => {
+      if (!document.body.contains(main)) return clearInterval(timer);
+      load().catch(() => {});
+    }, 10000);
   }
 
   // ── sites list ──────────────────────────────────────────────────
@@ -1256,6 +1389,7 @@
       if (route === 'overview') await pageOverview();
       else if (route === 'sites') await pageSites();
       else if (route.startsWith('sites/')) await pageSiteDetail(route.split('/')[1]);
+      else if (route === 'traffic') await pageTraffic();
       else if (route === 'certs') await pageCerts();
       else if (route === 'network') await pageNetwork();
       else if (route === 'admin/users' && me.role === 'admin') await pageUsers();

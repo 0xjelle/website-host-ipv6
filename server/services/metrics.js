@@ -99,6 +99,31 @@ function trafficSeries(siteIds, minutes = 60) {
   return out;
 }
 
+// Per-site series for a multi-line "traffic per website" chart. metric is
+// 'req' (requests/min from trafficBuckets) or 'bytes' (from byteBuckets).
+function perSiteSeries(siteIds, metric = 'req', minutes = 60) {
+  const wanted = siteIds === null ? null : new Set(siteIds.map(Number));
+  const buckets = metric === 'bytes' ? byteBuckets : trafficBuckets;
+  const field = metric === 'bytes' ? 'bytes' : 'counts';
+  const now = Math.floor(Date.now() / 60_000);
+  const byMinute = new Map(buckets.map(b => [b.t, b]));
+  // which site ids actually have data in-window (and are wanted)
+  const ids = new Set();
+  for (const b of buckets) if (b.t > now - minutes) for (const id of Object.keys(b[field])) {
+    if (!wanted || wanted.has(Number(id))) ids.add(Number(id));
+  }
+  const out = {};
+  for (const id of ids) {
+    const series = [];
+    for (let mm = now - minutes + 1; mm <= now; mm++) {
+      const bucket = byMinute.get(mm);
+      series.push({ t: mm * 60_000, n: bucket ? (bucket[field][id] || 0) : 0 });
+    }
+    out[id] = series;
+  }
+  return out;
+}
+
 function systemSeries() {
   return sysSamples.slice();
 }
@@ -108,4 +133,4 @@ function start() {
   setInterval(sampleSystem, SYS_INTERVAL_MS).unref();
 }
 
-module.exports = { start, hit, bytes, bandwidth, bandwidthSeries, trafficSeries, systemSeries };
+module.exports = { start, hit, bytes, bandwidth, bandwidthSeries, trafficSeries, perSiteSeries, systemSeries };

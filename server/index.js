@@ -44,6 +44,7 @@ require('./services/ipam').applyAll();   // re-attach dedicated site IPv6 addres
 require('./services/uplink').applyBoot(); // reconnect provider BGP tunnel if configured
 require('./services/metrics').start();    // system + traffic sampling for charts
 require('./services/sftp').start();       // built-in SFTP server for file uploads
+require('./services/poller').start();     // poll GitHub for pushes (auto-deploy behind NAT)
 
 // Resume node apps that were live before the restart (reaping any process
 // groups a previous platform run left behind so ports are free)

@@ -564,9 +564,14 @@
         <h2>GitHub auto-deploy</h2>
         ${site.repo_url ? `
           <p style="color:var(--ink-2);font-size:.9rem">Pushes to <code class="code">${esc(site.repo_branch)}</code> on
-            <code class="code">${esc(site.repo_url)}</code> deploy automatically.
-              <button class="btn small" id="mkhook" style="margin-left:.4rem">⚡ Create webhook automatically</button></p>
-          <p style="color:var(--ink-3);font-size:.82rem;margin-top:-.4rem">Connected a GitHub account? Use the button above and skip the manual steps. Otherwise add it by hand:</p>
+            <code class="code">${esc(site.repo_url)}</code> deploy automatically.</p>
+          <div class="first-user-banner" style="margin-bottom:1rem">🔄 <b>Auto-deploy is on by polling</b> — Hosting checks GitHub for new
+            commits every couple of minutes and redeploys, so it works even when your server isn't reachable from the internet.
+            <button class="btn small" id="checknow" style="margin-left:.4rem">Check now</button></div>
+          <details style="margin-bottom:.6rem"><summary style="cursor:pointer;color:var(--ink-3);font-size:.85rem">Prefer instant webhooks? (needs a public server)</summary>
+          <div style="padding-top:.8rem">
+          <p style="color:var(--ink-3);font-size:.82rem">If your server is reachable from GitHub, add a webhook for instant deploys.
+            <button class="btn small" id="mkhook">⚡ Create webhook automatically</button> (connected account), or add it by hand:</p>
           <label class="field"><span class="lbl">Payload URL</span>
             <div class="copybox"><code>${esc(site.webhook_url)}</code>
               <button class="cp" onclick="_copy('${esc(site.webhook_url)}')">⧉</button></div></label>
@@ -574,11 +579,23 @@
             <div class="copybox"><code>${esc(site.webhook_secret)}</code>
               <button class="cp" onclick="_copy('${esc(site.webhook_secret)}')">⧉</button></div>
             <span class="help">Content type: <b>application/json</b> · Events: <b>Just the push event</b>.</span></label>
-          <label class="field" style="display:flex;align-items:center;gap:.5rem;margin-top:1rem">
+          </div></details>
+          <label class="field" style="display:flex;align-items:center;gap:.5rem;margin-top:.4rem">
             <input type="checkbox" id="autodep" style="width:auto" ${site.auto_deploy ? 'checked' : ''}>
-            <span class="lbl" style="margin:0">Auto-deploy on push</span></label>`
+            <span class="lbl" style="margin:0">Auto-deploy on push (polling + webhook)</span></label>`
         : `<div class="empty">No repository connected. Add one in <b>Settings</b>.</div>`}
       </div>`));
+      body.querySelector('#checknow')?.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.target.disabled = true; e.target.textContent = 'Checking…';
+        try {
+          const r = await api(`/sites/${id}/check`, { method: 'POST' });
+          if (r.deploying) { toast(`New commit ${r.sha} — deploying`, 'ok'); setTimeout(() => pageSiteDetail(id, 'deploys'), 700); }
+          else if (r.upToDate) toast(`Already up to date (${r.sha})`, 'ok');
+          else toast(r.error || r.skipped || 'Nothing to do', r.error ? 'err' : '');
+        } catch (err) { oops(err); }
+        finally { if (e.target) { e.target.disabled = false; e.target.textContent = 'Check now'; } }
+      });
       body.querySelector('#autodep')?.addEventListener('change', async (e) => {
         try { await api(`/sites/${id}`, { method: 'PATCH', body: { auto_deploy: e.target.checked } }); toast('Saved', 'ok'); } catch (err) { oops(err); }
       });

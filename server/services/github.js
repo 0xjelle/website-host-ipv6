@@ -7,7 +7,8 @@ async function gh(token, path, opts = {}) {
   const res = await fetch(API + path, {
     ...opts,
     headers: {
-      Authorization: `Bearer ${token}`,
+      // token is optional — public repos work unauthenticated (rate-limited)
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       Accept: 'application/vnd.github+json',
       'User-Agent': 'HostingPlatform',
       'X-GitHub-Api-Version': '2022-11-28',
@@ -16,6 +17,18 @@ async function gh(token, path, opts = {}) {
     },
   });
   return res;
+}
+
+// Latest commit on a branch → { sha, message } or null. Works with or
+// without a token (public repos).
+async function getLatestCommit(token, fullName, branch) {
+  const res = await gh(token, `/repos/${fullName}/commits/${encodeURIComponent(branch)}`);
+  if (res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0') {
+    const e = new Error('GitHub API rate limit reached'); e.rateLimited = true; throw e;
+  }
+  if (!res.ok) return null;
+  const c = await res.json();
+  return { sha: c.sha, message: c.commit?.message || '' };
 }
 
 // Returns { login, name } or throws with a friendly message.
@@ -103,4 +116,4 @@ const repoFullName = (url) => {
   return m ? m[1] : null;
 };
 
-module.exports = { getUser, listRepos, createWebhook, setCommitStatus, repoFullName };
+module.exports = { getUser, listRepos, createWebhook, setCommitStatus, repoFullName, getLatestCommit };

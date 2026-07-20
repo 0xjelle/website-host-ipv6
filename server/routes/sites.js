@@ -117,6 +117,14 @@ router.post('/', (req, res) => {
   } else respond(null);
 });
 
+// Check GitHub for new commits now and deploy if the branch moved.
+router.post('/:id/check', async (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  const result = await require('../services/poller').checkSite(site);
+  res.json(result);
+});
+
 // Manually (re)create the GitHub webhook via the connected account.
 router.post('/:id/webhook', (req, res) => {
   const site = ownSite(req, res);

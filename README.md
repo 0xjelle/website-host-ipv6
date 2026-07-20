@@ -135,6 +135,20 @@ Dashboard on `:3000`, public sites on `:80`, WireGuard on `:51820/udp`.
    `application/json`, just the push event.
 4. Every push to `main` now deploys automatically. 🎉
 
+**Auto-deploy works two ways:**
+
+- **Polling (default, no setup)** — Hosting checks GitHub for new commits on
+  your branch every couple of minutes and redeploys when it sees one. This
+  works even when your server **isn't reachable from the internet** (behind
+  NAT / a private IP), so it's the reliable path for a home/LAN server. Uses
+  your connected token when available (higher rate limit); public repos work
+  without one. Tune with `POLL_INTERVAL_SEC` (default 120), or hit **Check
+  now** on a site's GitHub tab.
+- **Webhooks (instant)** — if your server *is* reachable from GitHub, add the
+  webhook (auto-created with a connected account) for push-instant deploys.
+
+Both honor the *Auto-deploy on push* toggle, and a commit only deploys once.
+
 **Deploy status on GitHub:** when your GitHub account (or a per-site token) is
 connected, each deploy posts a commit status back to GitHub — the commit shows
 a **pending → ✓ success / ✗ failure** check (context "Hosting / deploy") that
@@ -281,6 +295,7 @@ Give websites their own addresses from your block:
 | `DATA_DIR` | `./data` | SQLite DB, site checkouts, WireGuard configs |
 | `APP_PORT_BASE` | `20100` | First internal port for Node.js apps |
 | `SFTP_PORT` | `2222` | Port for the built-in SFTP server |
+| `POLL_INTERVAL_SEC` | `120` | How often to poll GitHub for new commits (auto-deploy) |
 
 **TLS:** the edge proxy speaks plain HTTP. For HTTPS put Caddy or nginx with
 Let's Encrypt in front (`reverse_proxy localhost:8080` with Caddy is two lines

@@ -219,6 +219,7 @@
         <div class="logo"><span class="hex">⬡</span> Hosting</div>
         ${nav('overview', '◈', 'Overview')}
         ${nav('sites', '▤', 'Sites')}
+        ${nav('certs', '🔒', 'Certificates')}
         ${nav('network', '⇄', 'Network / VPN')}
         ${me.role === 'admin' ? `
           <div class="side-label">Administration</div>
@@ -847,6 +848,50 @@
     }
   }
 
+  // ── SSL certificates overview ───────────────────────────────────
+  async function pageCerts() {
+    const { available, summary, certs } = await api('/certs');
+    const badge = (c) => {
+      const map = {
+        active:   ['live', 'Active'],
+        expiring: ['deploying', `Expires in ${c.daysLeft}d`],
+        expired:  ['failed', 'Expired'],
+        pending:  ['queued', 'Awaiting DNS'],
+        failed:   ['failed', 'Failed'],
+        none:     ['stopped', 'No certificate'],
+        ineligible: ['stopped', '—'],
+      };
+      const [cls, text] = map[c.state] || ['stopped', c.state];
+      return `<span class="pill ${cls}"><span class="dot"></span>${text}</span>`;
+    };
+    const c = h(`
+      <div>
+        <div class="page-head"><h1>Certificates</h1>
+          <div class="sub">SSL/TLS status across your sites — Let's Encrypt via DNS-01.</div></div>
+        ${!available ? `<div class="card"><div class="empty">SSL support isn't installed (the <code class="code">acme-client</code> package). Run <code class="code">npm install</code> and restart.</div></div>` : `
+        <div class="tiles">
+          <div class="tile"><div class="t-label">Active</div><div class="t-value" style="color:var(--good)">${summary.active}</div></div>
+          <div class="tile"><div class="t-label">Expiring soon</div><div class="t-value" style="color:${summary.expiring ? 'var(--warn)' : 'var(--ink)'}">${summary.expiring}</div></div>
+          <div class="tile"><div class="t-label">Expired</div><div class="t-value" style="color:${summary.expired ? 'var(--bad)' : 'var(--ink)'}">${summary.expired}</div></div>
+          <div class="tile"><div class="t-label">No certificate</div><div class="t-value">${summary.none + (summary.pending || 0)}</div></div>
+        </div>
+        ${summary.expiring || summary.expired ? `<div class="first-user-banner" style="margin-bottom:1.2rem">${summary.expired ? `🔴 <b>${summary.expired}</b> expired. ` : ''}${summary.expiring ? `🟡 <b>${summary.expiring}</b> expiring within 20 days. ` : ''}Open a site to renew (re-verify the DNS TXT record).</div>` : ''}
+        <div class="card"><h2>All certificates</h2>
+          <div class="tbl-scroll"><table class="tbl">
+            <tr><th>Site</th><th>Domains</th><th>Status</th><th>Expires</th><th>Auto-renew</th><th></th></tr>
+            ${certs.map(ct => `<tr>
+              <td><b>${esc(ct.name)}</b>${ct.owner_email ? `<br><span style="color:var(--ink-3);font-size:.8rem">${esc(ct.owner_email)}</span>` : ''}</td>
+              <td class="mono">${ct.domains.length ? ct.domains.map(esc).join('<br>') : '<span style="color:var(--ink-3)">— no custom domain</span>'}</td>
+              <td>${badge(ct)}</td>
+              <td>${ct.not_after ? `${fmtDate(ct.not_after)}${ct.daysLeft !== null ? `<br><span style="color:var(--ink-3);font-size:.8rem">${ct.daysLeft}d left</span>` : ''}` : '<span style="color:var(--ink-3)">—</span>'}</td>
+              <td>${ct.state === 'ineligible' ? '<span style="color:var(--ink-3)">—</span>' : (ct.auto_renew ? '✓' : '✕')}</td>
+              <td><a class="btn small" href="#/sites/${ct.site_id}">Manage →</a></td></tr>`).join('')}
+          </table></div>
+        </div>`}
+      </div>`);
+    shell('certs', c);
+  }
+
   // ── network / wireguard ─────────────────────────────────────────
   async function pageNetwork() {
     const { server, peers, bgp } = await api('/wireguard' + (me.role === 'admin' ? '?all=1' : ''));
@@ -1201,6 +1246,7 @@
       if (route === 'overview') await pageOverview();
       else if (route === 'sites') await pageSites();
       else if (route.startsWith('sites/')) await pageSiteDetail(route.split('/')[1]);
+      else if (route === 'certs') await pageCerts();
       else if (route === 'network') await pageNetwork();
       else if (route === 'admin/users' && me.role === 'admin') await pageUsers();
       else if (route === 'admin/system' && me.role === 'admin') await pageSystem();

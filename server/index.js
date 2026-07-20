@@ -18,6 +18,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/sites', require('./routes/sites'));
 app.use('/api/wireguard', require('./routes/wireguard'));
 app.use('/api/github', require('./routes/github'));
+app.use('/api/certs', require('./routes/certs'));
 app.use('/api/status', require('./routes/status')); // public — no auth
 app.use('/api', require('./routes/admin'));
 

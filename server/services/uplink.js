@@ -34,6 +34,9 @@ function sanitizeWgConf(text) {
 function writeWgConf() {
   const { wg } = getState();
   if (!wg) return null;
+  // Recreate from scratch: a stale file from a previous (possibly
+  // non-root) run can carry ownership/permissions that break wg-quick.
+  try { fs.unlinkSync(wgConfPath()); } catch {}
   fs.writeFileSync(wgConfPath(), wg, { mode: 0o600 });
   return wgConfPath();
 }

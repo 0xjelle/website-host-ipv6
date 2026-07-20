@@ -170,6 +170,7 @@ function wgConfPath() { return path.join(config.wgDir, 'wg0.conf'); }
 
 function syncToDisk() {
   const conf = renderServerConf();
+  try { fs.unlinkSync(wgConfPath()); } catch {}
   fs.writeFileSync(wgConfPath(), conf, { mode: 0o600 });
   return wgConfPath();
 }

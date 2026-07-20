@@ -268,53 +268,65 @@ function safePath(site, rel) {
   return p;
 }
 
-router.get('/:id/files', (req, res) => {
+// All file-manager I/O is async (fs.promises) so a large operation — e.g.
+// deleting a big node_modules tree — never blocks the event loop and hangs
+// the whole server.
+const fsp = fs.promises;
+
+router.get('/:id/files', async (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;
   const dir = safePath(site, req.query.path || '');
   if (!dir) return res.status(400).json({ error: 'Invalid path' });
-  fs.mkdirSync(siteRoot(site), { recursive: true });
-  if (!fs.existsSync(dir)) return res.json({ path: req.query.path || '', entries: [] });
-  const entries = fs.readdirSync(dir).map(name => {
-    const st = fs.statSync(path.join(dir, name));
-    return { name, dir: st.isDirectory(), size: st.size, mtime: st.mtimeMs };
-  }).sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name));
-  res.json({ path: req.query.path || '', root: siteRoot(site), entries });
+  try {
+    await fsp.mkdir(siteRoot(site), { recursive: true });
+    const names = await fsp.readdir(dir).catch(() => null);
+    if (names === null) return res.json({ path: req.query.path || '', entries: [] });
+    const entries = (await Promise.all(names.map(async (name) => {
+      try { const st = await fsp.stat(path.join(dir, name)); return { name, dir: st.isDirectory(), size: st.size, mtime: st.mtimeMs }; }
+      catch { return null; }
+    }))).filter(Boolean).sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name));
+    res.json({ path: req.query.path || '', root: siteRoot(site), entries });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Upload one file (raw body). ?path=relative/name.html
-router.put('/:id/files', express.raw({ type: '*/*', limit: '200mb' }), (req, res) => {
+router.put('/:id/files', express.raw({ type: '*/*', limit: '200mb' }), async (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;
   if (!req.query.path) return res.status(400).json({ error: 'path is required' });
   const dest = safePath(site, req.query.path);
   if (!dest || dest === siteRoot(site)) return res.status(400).json({ error: 'Invalid path' });
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.writeFileSync(dest, Buffer.isBuffer(req.body) ? req.body : Buffer.from(''));
-  if (site.type === 'static' && ['new', 'failed', 'stopped'].includes(site.status)) {
-    db.prepare("UPDATE sites SET status = 'live' WHERE id = ?").run(site.id);
-  }
-  logActivity(req.user.id, 'site.upload', `"${site.name}" ← ${req.query.path}`);
-  res.json({ ok: true });
+  try {
+    await fsp.mkdir(path.dirname(dest), { recursive: true });
+    await fsp.writeFile(dest, Buffer.isBuffer(req.body) ? req.body : Buffer.from(''));
+    if (site.type === 'static' && ['new', 'failed', 'stopped'].includes(site.status)) {
+      db.prepare("UPDATE sites SET status = 'live' WHERE id = ?").run(site.id);
+    }
+    logActivity(req.user.id, 'site.upload', `"${site.name}" ← ${req.query.path}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/:id/files/mkdir', (req, res) => {
+router.post('/:id/files/mkdir', async (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;
   const dir = safePath(site, req.body?.path);
   if (!dir || dir === siteRoot(site)) return res.status(400).json({ error: 'Invalid path' });
-  fs.mkdirSync(dir, { recursive: true });
-  res.json({ ok: true });
+  try { await fsp.mkdir(dir, { recursive: true }); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.delete('/:id/files', (req, res) => {
+router.delete('/:id/files', async (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;
   const target = safePath(site, req.query.path);
   if (!target || target === siteRoot(site)) return res.status(400).json({ error: 'Invalid path' });
-  fs.rmSync(target, { recursive: true, force: true });
-  logActivity(req.user.id, 'site.delete-file', `"${site.name}" ✕ ${req.query.path}`);
-  res.json({ ok: true });
+  try {
+    await fsp.rm(target, { recursive: true, force: true });
+    logActivity(req.user.id, 'site.delete-file', `"${site.name}" ✕ ${req.query.path}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.delete('/:id', (req, res) => {

@@ -24,8 +24,12 @@ function probe(site) {
       req.on('timeout', () => { req.destroy(); resolve({ online: false, reason: 'timeout' }); });
     } else {
       const dir = path.join(siteRoot(site), site.static_dir || '');
-      const ok = fs.existsSync(path.join(dir, 'index.html')) || (fs.existsSync(dir) && fs.readdirSync(dir).length > 0);
-      resolve({ online: ok, reason: ok ? undefined : 'no files to serve' });
+      // async so a large directory can't block the event loop
+      fs.promises.access(path.join(dir, 'index.html'))
+        .then(() => resolve({ online: true }))
+        .catch(() => fs.promises.readdir(dir)
+          .then(list => resolve({ online: list.length > 0, reason: list.length ? undefined : 'no files to serve' }))
+          .catch(() => resolve({ online: false, reason: 'no files to serve' })));
     }
   });
 }

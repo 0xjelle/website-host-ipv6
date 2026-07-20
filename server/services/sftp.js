@@ -116,7 +116,7 @@ function start() {
             sftp.handle(reqid, newHandle({ dir: r.real, read: false }));
           });
 
-          sftp.on('READDIR', (reqid, h) => {
+          sftp.on('READDIR', async (reqid, h) => {
             const o = handles.get(h.toString());
             if (!o || !o.dir) return sftp.status(reqid, S.FAILURE);
             if (o.read) return sftp.status(reqid, S.EOF);
@@ -126,9 +126,11 @@ function start() {
               const sites = db.prepare('SELECT slug FROM sites WHERE user_id = ? ORDER BY slug').all(userId);
               names = sites.map(s => ({ filename: s.slug, longname: `drwxr-xr-x 1 owner owner 0 ${s.slug}`, attrs: attrsFor(null, true) }));
             } else {
-              for (const name of fs.readdirSync(o.dir)) {
+              // async so listing a huge directory doesn't block the event loop
+              const list = await fs.promises.readdir(o.dir).catch(() => []);
+              for (const name of list) {
                 try {
-                  const st = fs.statSync(path.join(o.dir, name));
+                  const st = await fs.promises.stat(path.join(o.dir, name));
                   names.push({ filename: name, longname: `${st.isDirectory() ? 'd' : '-'}rw-r--r-- 1 owner owner ${st.size} ${name}`, attrs: attrsFor(st) });
                 } catch {}
               }

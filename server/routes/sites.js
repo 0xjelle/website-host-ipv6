@@ -280,13 +280,23 @@ router.get('/:id/files', async (req, res) => {
   if (!dir) return res.status(400).json({ error: 'Invalid path' });
   try {
     await fsp.mkdir(siteRoot(site), { recursive: true });
-    const names = await fsp.readdir(dir).catch(() => null);
-    if (names === null) return res.json({ path: req.query.path || '', entries: [] });
-    const entries = (await Promise.all(names.map(async (name) => {
-      try { const st = await fsp.stat(path.join(dir, name)); return { name, dir: st.isDirectory(), size: st.size, mtime: st.mtimeMs }; }
-      catch { return null; }
-    }))).filter(Boolean).sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name));
-    res.json({ path: req.query.path || '', root: siteRoot(site), entries });
+    // withFileTypes gives name + is-directory with no per-entry stat; we then
+    // stat only files (for size), sequentially, so a huge directory can't
+    // exhaust file descriptors or block the event loop.
+    const dirents = await fsp.readdir(dir, { withFileTypes: true }).catch(() => null);
+    if (dirents === null) return res.json({ path: req.query.path || '', entries: [] });
+    const MAX = 2000;
+    const entries = [];
+    for (const d of dirents.slice(0, MAX)) {
+      const isDir = d.isDirectory();
+      let size = 0, mtime = 0;
+      if (!isDir) {
+        try { const st = await fsp.stat(path.join(dir, d.name)); size = st.size; mtime = st.mtimeMs; } catch {}
+      }
+      entries.push({ name: d.name, dir: isDir, size, mtime });
+    }
+    entries.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name));
+    res.json({ path: req.query.path || '', root: siteRoot(site), entries, truncated: dirents.length > MAX });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

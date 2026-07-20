@@ -32,6 +32,10 @@
     .row .name{font-weight:600}.row a{color:var(--ink);text-decoration:none}.row a:hover{color:#38d0ff}
     .row .type{font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);border:1px solid var(--border);
       border-radius:5px;padding:.05rem .35rem}
+    .row .ssl{font-size:.72rem;font-weight:600;padding:.1rem .45rem;border-radius:6px;border:1px solid var(--border)}
+    .ssl.secure{color:var(--good);border-color:rgba(52,211,153,.4)}
+    .ssl.expiring{color:var(--warn);border-color:rgba(251,191,36,.4)}
+    .ssl.none{color:var(--ink3)}.ssl.pending{color:var(--warn)}.ssl.na{display:none}
     .row .state{margin-left:auto;font-size:.82rem;font-weight:600}
     .state.up{color:var(--good)}.state.down{color:var(--bad)}.state.deg{color:var(--warn)}
     .foot{text-align:center;color:var(--ink3);font-size:.78rem;margin-top:1.6rem}
@@ -62,14 +66,19 @@
         <div class="summary">
           <div class="stat up"><div class="n">${d.counts.up}</div><div class="l">Online</div></div>
           <div class="stat down"><div class="n">${d.counts.down}</div><div class="l">Offline</div></div>
+          <div class="stat"><div class="n">🔒 ${d.ssl ? d.ssl.secure : 0}</div><div class="l">HTTPS secured</div></div>
           <div class="stat"><div class="n">${d.counts.total}</div><div class="l">Total</div></div>
         </div>
+        ${d.ssl && d.ssl.expiring ? `<div class="banner partial" style="padding:.8rem 1.2rem;margin-bottom:1.2rem"><span class="big-dot"></span><div><b>${d.ssl.expiring}</b> certificate${d.ssl.expiring === 1 ? '' : 's'} expiring soon</div></div>` : ''}
         ${d.sites.length ? `<div class="list">${d.sites.map(s => {
           const st = s.degraded ? 'deg' : (s.online ? 'up' : 'down');
           const label = s.degraded ? 'Deploying' : (s.online ? 'Operational' : 'Down');
+          const ssl = s.ssl || { state: 'na' };
+          const sslLabel = { secure: '🔒 SSL', expiring: `🔒 ${ssl.daysLeft}d left`, pending: '🔒 pending', none: '🔓 no SSL', na: '' }[ssl.state] || '';
           return `<div class="row"><span class="dot ${st}"></span>
             <span class="name"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a></span>
             <span class="type">${esc(s.type)}</span>
+            ${sslLabel ? `<span class="ssl ${ssl.state}" title="${ssl.not_after ? 'expires ' + new Date(ssl.not_after).toLocaleDateString() : ''}">${sslLabel}</span>` : ''}
             <span class="state ${st}">${label}${s.online && s.ms ? ` · ${s.ms}ms` : ''}</span></div>`;
         }).join('')}</div>` : '<div class="list"><div class="empty">No sites are being hosted yet.</div></div>'}`;
       document.getElementById('foot').textContent = 'Updated ' + new Date(d.generated).toLocaleTimeString() + ' · refreshes every 30s';

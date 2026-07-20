@@ -240,17 +240,29 @@ function validateUplink(birdText, cb) {
   }
 }
 
-// Apply the current config to a running BIRD via birdc, best effort.
+// Apply the current config to BIRD. If BIRD is reconfigurable, `birdc
+// configure` reloads it live. If BIRD isn't running (no control socket),
+// the config is already on disk — start the service so it picks it up,
+// rather than surfacing a raw socket error.
 function applyLive(cb) {
   const confPath = writeConf();
   execFile('birdc', ['configure'], (err, stdout, stderr) => {
-    if (err) {
-      const reason = err.code === 'ENOENT'
-        ? 'birdc not available — config written to disk only'
-        : `birdc configure failed: ${(stderr || stdout || err.message).trim().split('\n').pop()}`;
-      return cb({ applied: false, reason, confPath });
+    if (!err) {
+      return cb({ applied: /Reconfigured|Reconfiguration in progress/i.test(stdout), confPath, output: stdout.trim().split('\n').pop() });
     }
-    cb({ applied: /Reconfigured|Reconfiguration in progress/i.test(stdout), confPath, output: stdout.trim().split('\n').pop() });
+    const out = String((stderr || '') + (stdout || '') || err.message);
+    if (err.code === 'ENOENT') {
+      return cb({ applied: false, reason: 'BIRD is not installed — config written to disk', confPath });
+    }
+    // BIRD not running (no /run/bird/bird.ctl) → try to start it; it reads
+    // the freshly written config on startup.
+    if (/control socket|Unable to connect|No such file/i.test(out)) {
+      return execFile('systemctl', ['start', 'bird'], (startErr) => {
+        if (!startErr) return cb({ applied: true, confPath, output: 'BIRD was not running — started it' });
+        return cb({ applied: false, confPath, reason: 'Config saved. BIRD is not running — start it with:  sudo systemctl start bird' });
+      });
+    }
+    cb({ applied: false, confPath, reason: `birdc configure failed: ${out.trim().split('\n').pop()}` });
   });
 }
 

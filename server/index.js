@@ -73,3 +73,9 @@ if (tlsServer) {
 
 process.on('SIGTERM', () => process.exit(0));
 process.on('SIGINT', () => process.exit(0));
+
+// Safety net: a stray error in a background task (a site's process, a tunnel
+// hook, an API call) must never take the whole dashboard down. Log and keep
+// serving rather than crash-looping.
+process.on('uncaughtException', (err) => console.error('uncaughtException (kept running):', err.stack || err.message));
+process.on('unhandledRejection', (reason) => console.error('unhandledRejection (kept running):', reason));

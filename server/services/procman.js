@@ -28,14 +28,37 @@ function start(site, config) {
     PORT: String(site.app_port),
     NODE_ENV: 'production',
   };
-  // Own process group so stop() can take down the whole tree, and a stale
-  // group from a previous platform run can be cleaned up on boot.
-  const child = spawn('/bin/sh', ['-c', cmdline], { cwd, env, detached: true });
-  db.prepare('UPDATE sites SET app_pid = ? WHERE id = ?').run(child.pid, site.id);
-  const entry = { child, logs: [], startedAt: Date.now(), restarts: procs.get(site.id)?.restarts ?? 0 };
+  const entry = { child: null, logs: [], startedAt: Date.now(), restarts: procs.get(site.id)?.restarts ?? 0 };
   procs.set(site.id, entry);
+
+  // Never let a bad launch crash the platform: if the working directory is
+  // gone (e.g. its files were deleted) there's nothing to run.
+  if (!require('fs').existsSync(cwd)) {
+    appendLog(entry, `✖ cannot start: working directory is missing (${cwd}). Deploy or upload files first.`);
+    db.prepare("UPDATE sites SET status = 'failed', app_pid = NULL WHERE id = ?").run(site.id);
+    return entry;
+  }
+
+  let child;
+  try {
+    // Own process group so stop() can take down the whole tree.
+    child = spawn('/bin/sh', ['-c', cmdline], { cwd, env, detached: true });
+  } catch (e) {
+    appendLog(entry, `✖ failed to launch: ${e.message}`);
+    db.prepare("UPDATE sites SET status = 'failed', app_pid = NULL WHERE id = ?").run(site.id);
+    return entry;
+  }
+  entry.child = child;
+  db.prepare('UPDATE sites SET app_pid = ? WHERE id = ?').run(child.pid || null, site.id);
   appendLog(entry, `▶ starting: ${cmdline} (PORT=${site.app_port})`);
 
+  // Without this, a spawn error (bad cwd, missing shell) is thrown as an
+  // uncaught exception and crashes the whole server.
+  child.on('error', (err) => {
+    appendLog(entry, `✖ process error: ${err.message}`);
+    entry.child = null;
+    db.prepare("UPDATE sites SET status = 'failed', app_pid = NULL WHERE id = ?").run(site.id);
+  });
   child.stdout.on('data', d => appendLog(entry, d.toString()));
   child.stderr.on('data', d => appendLog(entry, d.toString()));
   child.on('exit', (code, signal) => {

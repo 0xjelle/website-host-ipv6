@@ -506,6 +506,52 @@
     }
 
     if (tab === 'github') {
+      // GitHub account connection panel (guide + token field), inline here
+      const ghPanel = h(`<div class="card" id="ghpanel">
+        <h2>GitHub account <span class="hint" id="ghstate">checking…</span></h2>
+        <div id="ghbody"><div style="color:var(--ink-3);font-size:.85rem">Loading…</div></div>
+      </div>`);
+      const ghCard = ghPanel.firstElementChild; // keep a live ref (fragment empties on append)
+      body.appendChild(ghPanel);
+      const renderGh = (st) => {
+        const gb = ghCard.querySelector('#ghbody');
+        ghCard.querySelector('#ghstate').textContent = st.connected ? `connected as ${st.login}` : 'not connected';
+        if (st.connected) {
+          gb.innerHTML = `<p style="color:var(--ink-2);font-size:.9rem;margin:0 0 .8rem">
+            Connected as <b>${esc(st.login)}</b>. Private repos deploy automatically and webhooks are created for you.</p>
+            <button class="btn small danger" id="ghdisc">Disconnect</button>`;
+          gb.querySelector('#ghdisc').addEventListener('click', async () => {
+            try { await api('/github', { method: 'DELETE' }); toast('GitHub disconnected', 'ok'); loadGh(); } catch (e) { oops(e); }
+          });
+        } else {
+          gb.innerHTML = `
+            <p style="color:var(--ink-2);font-size:.9rem;margin:0 0 .6rem">Connect your account so <b>private</b>
+              repositories deploy without being made public.</p>
+            <ol style="color:var(--ink-3);font-size:.83rem;line-height:1.8;margin:0 0 .8rem;padding-left:1.2rem">
+              <li>GitHub → <b>Settings → Developer settings → Personal access tokens</b></li>
+              <li><b>Tokens (classic)</b> → <i>Generate new token</i> → tick <code class="code">repo</code>
+                and <code class="code">admin:repo_hook</code> — or a <b>fine-grained</b> token with
+                <b>Contents: Read</b> and <b>Webhooks: Read &amp; write</b></li>
+              <li>Copy the token (starts with <code class="code">ghp_</code> or <code class="code">github_pat_</code>) and paste it below</li>
+            </ol>
+            <div style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap">
+              <label class="field" style="flex:1;min-width:220px;margin:0"><span class="lbl">Personal Access Token</span>
+                <input type="password" id="ghtok" placeholder="ghp_… or github_pat_…"></label>
+              <a class="btn small" href="https://github.com/settings/tokens/new?scopes=repo,admin:repo_hook&description=Hosting" target="_blank">Open GitHub ↗</a>
+              <button class="btn primary" id="ghsave">Connect</button>
+            </div>`;
+          gb.querySelector('#ghsave').addEventListener('click', async () => {
+            const token = gb.querySelector('#ghtok').value.trim();
+            if (!token) return toast('Paste a token first', 'err');
+            try { const r = await api('/github', { method: 'POST', body: { token } }); toast(`Connected as ${r.login} — redeploy to pull private repos`, 'ok'); loadGh(); }
+            catch (e) { oops(e); }
+          });
+          gb.querySelector('#ghtok').addEventListener('keydown', (e) => { if (e.key === 'Enter') gb.querySelector('#ghsave').click(); });
+        }
+      };
+      const loadGh = () => api('/github').then(renderGh).catch(() => { ghCard.querySelector('#ghbody').innerHTML = '<div style="color:var(--bad)">Could not load GitHub status</div>'; });
+      loadGh();
+
       body.appendChild(h(`<div class="card">
         <h2>GitHub auto-deploy</h2>
         ${site.repo_url ? `

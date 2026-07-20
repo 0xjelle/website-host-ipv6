@@ -1,6 +1,9 @@
 // Host-header reverse proxy: routes public traffic to static files or the
 // internal port of a Node.js site. Zero-dependency (node:http only).
 const http = require('http');
+const https = require('https');
+const tls = require('tls');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config');
@@ -149,41 +152,83 @@ function proxyToApp(site, req, res) {
   req.pipe(upstream);
 }
 
-function createProxyServer() {
-  const server = http.createServer((req, res) => {
-    const site = findSite(req);
-    if (!site) {
-      if (isBareHost(req)) return siteIndexPage(res);
-      return errorPage(res, 404, 'No site here', `No site is configured for <b>${(req.headers.host || 'this host').split(':')[0]}</b>.`);
-    }
-    metrics.hit(site.id);
-    if (site.type === 'node') return proxyToApp(site, req, res);
-    return serveStatic(site, req, res);
-  });
+function handleRequest(req, res) {
+  const site = findSite(req);
+  if (!site) {
+    if (isBareHost(req)) return siteIndexPage(res);
+    return errorPage(res, 404, 'No site here', `No site is configured for <b>${(req.headers.host || 'this host').split(':')[0]}</b>.`);
+  }
+  metrics.hit(site.id);
+  if (site.type === 'node') return proxyToApp(site, req, res);
+  return serveStatic(site, req, res);
+}
 
-  // WebSocket passthrough for node apps
-  server.on('upgrade', (req, socket) => {
-    const site = findSite(req);
-    if (!site || site.type !== 'node') return socket.destroy();
-    const upstream = http.request({
-      host: '127.0.0.1', port: site.app_port, path: req.url, method: req.method,
-      headers: req.headers,
-    });
-    upstream.on('upgrade', (ur, upSocket, upHead) => {
-      let head = `HTTP/1.1 101 Switching Protocols\r\n`;
-      for (let i = 0; i < ur.rawHeaders.length; i += 2) head += `${ur.rawHeaders[i]}: ${ur.rawHeaders[i + 1]}\r\n`;
-      socket.write(head + '\r\n');
-      if (upHead?.length) socket.write(upHead);
-      upSocket.pipe(socket);
-      socket.pipe(upSocket);
-      socket.on('error', () => upSocket.destroy());
-      upSocket.on('error', () => socket.destroy());
-    });
-    upstream.on('error', () => socket.destroy());
-    upstream.end();
+function handleUpgrade(req, socket) {
+  const site = findSite(req);
+  if (!site || site.type !== 'node') return socket.destroy();
+  const upstream = http.request({
+    host: '127.0.0.1', port: site.app_port, path: req.url, method: req.method, headers: req.headers,
   });
+  upstream.on('upgrade', (ur, upSocket, upHead) => {
+    let head = `HTTP/1.1 101 Switching Protocols\r\n`;
+    for (let i = 0; i < ur.rawHeaders.length; i += 2) head += `${ur.rawHeaders[i]}: ${ur.rawHeaders[i + 1]}\r\n`;
+    socket.write(head + '\r\n');
+    if (upHead?.length) socket.write(upHead);
+    upSocket.pipe(socket); socket.pipe(upSocket);
+    socket.on('error', () => upSocket.destroy());
+    upSocket.on('error', () => socket.destroy());
+  });
+  upstream.on('error', () => socket.destroy());
+  upstream.end();
+}
 
+// ── TLS cert store (SNI) ────────────────────────────────────────────
+const contexts = new Map(); // hostname -> tls.SecureContext
+let defaultContext = null;
+
+function ensureDefaultCert() {
+  const dir = path.join(config.dataDir, 'certs', '_default');
+  const crt = path.join(dir, 'default.crt'), key = path.join(dir, 'default.key');
+  if (!fs.existsSync(crt) || !fs.existsSync(key)) {
+    fs.mkdirSync(dir, { recursive: true });
+    try {
+      execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '3650',
+        '-subj', '/CN=hosting.local', '-keyout', key, '-out', crt], { stdio: 'ignore' });
+    } catch { return null; }
+  }
+  return { crt, key };
+}
+
+function reloadCerts() {
+  contexts.clear();
+  let acme;
+  try { acme = require('./acme'); } catch { return; }
+  for (const c of acme.activeCerts()) {
+    try {
+      const ctx = tls.createSecureContext({ cert: c.cert, key: c.key });
+      for (const d of c.domains) contexts.set(d.toLowerCase(), ctx);
+    } catch (e) { console.error('cert load failed:', e.message); }
+  }
+  console.log(`⬡ TLS: loaded certificates for ${contexts.size} domain(s)`);
+}
+
+function createTlsProxyServer() {
+  const def = ensureDefaultCert();
+  if (!def) { console.log('TLS disabled (openssl unavailable for the default cert)'); return null; }
+  reloadCerts();
+  const server = https.createServer({
+    cert: fs.readFileSync(def.crt),
+    key: fs.readFileSync(def.key),
+    SNICallback: (servername, cb) => cb(null, contexts.get((servername || '').toLowerCase()) || undefined),
+  }, handleRequest);
+  server.on('upgrade', handleUpgrade);
   return server;
 }
 
-module.exports = { createProxyServer, findSite };
+function createProxyServer() {
+  const server = http.createServer(handleRequest);
+  server.on('upgrade', handleUpgrade);
+  return server;
+}
+
+module.exports = { createProxyServer, createTlsProxyServer, reloadCerts, findSite };

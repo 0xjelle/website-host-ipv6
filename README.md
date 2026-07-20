@@ -297,9 +297,31 @@ Give websites their own addresses from your block:
 | `SFTP_PORT` | `2222` | Port for the built-in SFTP server |
 | `POLL_INTERVAL_SEC` | `120` | How often to poll GitHub for new commits (auto-deploy) |
 
-**TLS:** the edge proxy speaks plain HTTP. For HTTPS put Caddy or nginx with
-Let's Encrypt in front (`reverse_proxy localhost:8080` with Caddy is two lines
-and gives you automatic certificates for every domain).
+## SSL / HTTPS (Let's Encrypt, built in)
+
+Each site has an **SSL** tab that issues a real Let's Encrypt certificate using
+the **DNS-01** challenge — so it works for a server with **no inbound access**
+(behind NAT / a private IP), unlike HTTP-01 or a fronting proxy.
+
+1. Add a **real custom domain** you control to the site (Settings → Domains)
+   and point its A/AAAA records at this server.
+2. **SSL tab → Get certificate.** Hosting creates the ACME order and shows the
+   `_acme-challenge.<domain>` **TXT record(s)** to add.
+3. Add them at your DNS provider, wait a minute, then **Verify & issue**.
+   The certificate is stored and the edge proxy immediately serves HTTPS for
+   that domain (SNI — each domain gets its own cert; unknown names get a
+   self-signed default).
+4. **Auto-renew** (on by default) re-stages fresh TXT records ~30 days before
+   expiry and flags the site, so you just re-verify. (Fully unattended renewal
+   isn't possible with manual DNS; the existing cert keeps serving until the
+   new one is issued.)
+
+The HTTPS proxy listens on `PROXY_TLS_PORT` (default 443). Set `SSL_STAGING=1`
+to test against Let's Encrypt's staging (untrusted) endpoint first.
+
+> Prefer to terminate TLS elsewhere? You still can — put Caddy/nginx in front
+> of the plain-HTTP proxy (`reverse_proxy localhost:8080`). The built-in ACME
+> is for when you want it self-contained.
 
 ## Stack
 

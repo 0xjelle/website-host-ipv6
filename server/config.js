@@ -49,6 +49,7 @@ module.exports = {
   })(),
   adminPort: parseInt(process.env.ADMIN_PORT || '3000', 10),
   proxyPort: parseInt(process.env.PROXY_PORT || '8080', 10),
+  proxyTlsPort: parseInt(process.env.PROXY_TLS_PORT || '443', 10),
   publicHost: process.env.PUBLIC_HOST || 'localhost',
   // Base domain for the free per-site subdomains. A bare IP can't have a
   // label prefixed (jelle-md.192.168.1.226 resolves to nothing), so fall

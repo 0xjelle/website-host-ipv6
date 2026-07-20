@@ -175,6 +175,7 @@ fi
 step "Firewall"
 if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q 'Status: active'; then
   run "ufw rule failed" ufw allow "$PROXY_PORT/tcp"
+  run "ufw rule failed" ufw allow 443/tcp
   run "ufw rule failed" ufw allow "$ADMIN_PORT/tcp"
   run "ufw rule failed" ufw allow 2222/tcp
   run "ufw rule failed" ufw allow 51820/udp

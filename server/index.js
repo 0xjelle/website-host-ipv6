@@ -45,6 +45,7 @@ require('./services/uplink').applyBoot(); // reconnect provider BGP tunnel if co
 require('./services/metrics').start();    // system + traffic sampling for charts
 require('./services/sftp').start();       // built-in SFTP server for file uploads
 require('./services/poller').start();     // poll GitHub for pushes (auto-deploy behind NAT)
+require('./services/acme').startRenewals(); // stage SSL renewals before expiry
 
 // Resume node apps that were live before the restart (reaping any process
 // groups a previous platform run left behind so ports are free)
@@ -61,6 +62,14 @@ app.listen(config.adminPort, () => {
 createProxyServer().listen(config.proxyPort, () => {
   console.log(`⬡ Hosting edge proxy → http://localhost:${config.proxyPort} (routes by Host header)`);
 });
+
+const tlsServer = require('./services/proxy').createTlsProxyServer();
+if (tlsServer) {
+  tlsServer.on('error', (e) => console.error(`TLS proxy error: ${e.message}`));
+  tlsServer.listen(config.proxyTlsPort, () => {
+    console.log(`⬡ Hosting TLS proxy  → https://localhost:${config.proxyTlsPort} (SNI, Let's Encrypt)`);
+  });
+}
 
 process.on('SIGTERM', () => process.exit(0));
 process.on('SIGINT', () => process.exit(0));

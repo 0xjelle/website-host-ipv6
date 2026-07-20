@@ -459,6 +459,7 @@
         <div class="tabs">
           ${tabBtn('deploys', 'Deployments')}
           ${tabBtn('files', 'Files')}
+          ${tabBtn('ssl', 'SSL')}
           ${tabBtn('github', 'GitHub')}
           ${site.type === 'node' ? tabBtn('logs', 'Runtime logs') : ''}
           ${tabBtn('settings', 'Settings')}
@@ -607,6 +608,82 @@
           else toast(`Not created: ${webhook.reason}`, /already/.test(webhook.reason) ? 'ok' : 'err');
         } catch (err) { oops(err); }
       });
+    }
+
+    if (tab === 'ssl') {
+      const wrap = h(`<div id="sslwrap"><div class="card"><h2>SSL certificate</h2><div id="sslbody">Loading…</div></div></div>`);
+      body.appendChild(wrap);
+      const sslBody = () => body.querySelector('#sslbody');
+      const pill2 = (cls, text) => `<span class="pill ${cls}"><span class="dot"></span>${text}</span>`;
+      const statePill = (st) => {
+        if (st.status === 'active') {
+          const soon = st.daysLeft !== null && st.daysLeft <= 30;
+          return pill2(soon ? 'deploying' : 'live', soon ? `active · expires in ${st.daysLeft}d` : 'active');
+        }
+        if (st.status === 'pending') return pill2('queued', 'awaiting DNS');
+        if (st.status === 'failed') return pill2('failed', 'failed');
+        return pill2('stopped', 'no certificate');
+      };
+      const render = (st) => {
+        if (!st.available) { sslBody().innerHTML = `<div class="empty">SSL support isn't installed on this server (the <code class="code">acme-client</code> package). Run <code class="code">npm install</code> and restart.</div>`; return; }
+        const domains = st.domains_configured || [];
+        const eligible = domains.filter(d => !/\.sslip\.io$/i.test(d) && !/^\d+\.\d+\.\d+\.\d+$/.test(d));
+        sslBody().innerHTML = `
+          <div class="kv" style="margin-bottom:1rem">
+            <span class="k">Status</span><span class="v">${statePill(st)}</span>
+            ${st.not_after ? `<span class="k">Expires</span><span class="v">${fmtDate(st.not_after)} (${st.daysLeft}d)</span>` : ''}
+            ${st.issuer ? `<span class="k">Issuer</span><span class="v">${esc(st.issuer)}${st.staging ? ' — staging (not trusted by browsers)' : ''}</span>` : ''}
+            <span class="k">Domains</span><span class="v">${domains.length ? domains.map(esc).join(', ') : '<span style="color:var(--warn)">none — add a custom domain in Settings first</span>'}</span>
+          </div>
+          ${!eligible.length ? `<div class="first-user-banner">Add a <b>real custom domain</b> you control (Settings → Domains) to get a certificate. The free <code class="code">.sslip.io</code> address can't be certified.</div>` : `
+            ${st.status === 'pending' && st.challenge.length ? `
+              <div class="card" style="background:var(--bg-2);margin:0 0 1rem">
+                <h2 style="font-size:.95rem">① Add these DNS TXT records</h2>
+                <p style="color:var(--ink-2);font-size:.86rem;margin:.2rem 0 .8rem">At your DNS provider, add each record below, wait a minute for it to propagate, then click <b>Verify &amp; issue</b>.</p>
+                <table class="tbl"><tr><th>Type</th><th>Name</th><th>Value</th></tr>
+                  ${st.challenge.map(c => `<tr>
+                    <td class="mono">TXT</td>
+                    <td class="mono">${esc(c.name)} <button class="cp" onclick="_copy('${esc(c.name)}')">⧉</button></td>
+                    <td class="mono" style="word-break:break-all">${esc(c.value)} <button class="cp" onclick="_copy('${esc(c.value)}')">⧉</button></td></tr>`).join('')}
+                </table>
+                <div style="margin-top:1rem;display:flex;gap:.6rem">
+                  <button class="btn primary" id="sslverify">② Verify &amp; issue</button>
+                  <button class="btn" id="sslcancel">Cancel</button>
+                </div>
+              </div>` : `
+              <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
+                <button class="btn primary" id="sslrequest">${st.status === 'active' ? '🔄 Renew now' : '🔒 Get certificate'}</button>
+                ${st.status === 'active' ? `<button class="btn danger" id="sslremove">Remove</button>` : ''}
+                <label style="display:flex;align-items:center;gap:.4rem;margin-left:.4rem;font-size:.85rem;color:var(--ink-2)">
+                  <input type="checkbox" id="sslauto" style="width:auto" ${st.auto_renew ? 'checked' : ''}> Auto-renew (re-stage TXT ~30d before expiry)</label>
+              </div>
+              <p style="color:var(--ink-3);font-size:.8rem;margin-top:.8rem">Uses Let's Encrypt with DNS-01 verification — no inbound access needed, so it works behind NAT. Point your domain's A/AAAA records at this server, then get a certificate.</p>`}
+          `}`;
+        wireSsl(st);
+      };
+      const wireSsl = (st) => {
+        const b = sslBody();
+        b.querySelector('#sslrequest')?.addEventListener('click', async (e) => {
+          e.target.disabled = true; e.target.textContent = 'Creating order…';
+          try { await api(`/sites/${id}/ssl/request`, { method: 'POST' }); toast('Order created — add the DNS TXT records shown', 'ok'); load(); }
+          catch (err) { oops(err); load(); }
+        });
+        b.querySelector('#sslverify')?.addEventListener('click', async (e) => {
+          e.target.disabled = true; e.target.textContent = 'Verifying…';
+          try { const r = await api(`/sites/${id}/ssl/verify`, { method: 'POST' }); toast(`Certificate issued 🔒 (until ${new Date(r.not_after).toLocaleDateString()})`, 'ok'); load(); }
+          catch (err) { oops(err); load(); }
+        });
+        b.querySelector('#sslcancel')?.addEventListener('click', async () => { await api(`/sites/${id}/ssl`, { method: 'DELETE' }).catch(() => {}); load(); });
+        b.querySelector('#sslremove')?.addEventListener('click', async () => {
+          if (!confirm('Remove this certificate?')) return;
+          try { await api(`/sites/${id}/ssl`, { method: 'DELETE' }); toast('Certificate removed', 'ok'); load(); } catch (err) { oops(err); }
+        });
+        b.querySelector('#sslauto')?.addEventListener('change', async (e) => {
+          try { await api(`/sites/${id}/ssl`, { method: 'PATCH', body: { auto_renew: e.target.checked } }); toast('Saved', 'ok'); } catch (err) { oops(err); }
+        });
+      };
+      const load = () => api(`/sites/${id}/ssl`).then(render).catch(e => { sslBody().innerHTML = `<div style="color:var(--bad)">${esc(e.message)}</div>`; });
+      load();
     }
 
     if (tab === 'files') {

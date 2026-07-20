@@ -76,6 +76,18 @@ CREATE TABLE IF NOT EXISTS wg_peers (
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS certs (
+  site_id     INTEGER PRIMARY KEY REFERENCES sites(id) ON DELETE CASCADE,
+  domains     TEXT NOT NULL DEFAULT '[]',   -- JSON array covered by the cert
+  status      TEXT NOT NULL DEFAULT 'none', -- none|pending|active|failed
+  challenge   TEXT NOT NULL DEFAULT '[]',   -- JSON [{name,value}] TXT records to add
+  not_after   TEXT,
+  issuer      TEXT,
+  auto_renew  INTEGER NOT NULL DEFAULT 1,
+  last_error  TEXT,
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS activity (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id    INTEGER,

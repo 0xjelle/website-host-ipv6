@@ -212,6 +212,45 @@ router.get('/:id/health', async (req, res) => {
   res.json(await require('../services/health').checkHealth(site));
 });
 
+// ── SSL (Let's Encrypt, DNS-01) ─────────────────────────────────────
+const acme = require('../services/acme');
+
+router.get('/:id/ssl', (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  res.json({ available: acme.available(), ...acme.readStatus(site.id), domains_configured: JSON.parse(site.domains || '[]') });
+});
+
+router.post('/:id/ssl/request', async (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  const domains = JSON.parse(site.domains || '[]');
+  try { res.json(await acme.request(site, domains, req.user.email)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.post('/:id/ssl/verify', async (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  try { res.json(await acme.complete(site)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.patch('/:id/ssl', (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  if (req.body.auto_renew !== undefined) acme.setAutoRenew(site.id, !!req.body.auto_renew);
+  res.json({ ok: true });
+});
+
+router.delete('/:id/ssl', (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  acme.remove(site.id);
+  logActivity(req.user.id, 'ssl.remove', `"${site.name}"`);
+  res.json({ ok: true });
+});
+
 router.get('/:id/deployments/:depId', (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;

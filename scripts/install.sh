@@ -150,7 +150,11 @@ fi
 
 step "WireGuard + BGP (wg0 · bird)"
 mkdir -p /etc/wireguard /etc/bird
-[ -e /etc/wireguard/wg0.conf ] || ln -s "$APP_DIR/data/wireguard/wg0.conf" /etc/wireguard/wg0.conf
+# Hosting writes the live interface configs directly into /etc/wireguard as
+# real files (wg0.conf, uplink.conf) — required because wg-quick's AppArmor
+# profile only permits reading configs under /etc/wireguard. Remove any old
+# symlink from a previous version so the app can replace it with a real file.
+[ -L /etc/wireguard/wg0.conf ] && rm -f /etc/wireguard/wg0.conf
 if [ -f /etc/bird/bird.conf ] && [ ! -L /etc/bird/bird.conf ]; then mv /etc/bird/bird.conf /etc/bird/bird.conf.dist; fi
 ln -sf "$APP_DIR/data/bird/bird.conf" /etc/bird/bird.conf
 cat > /etc/sysctl.d/99-hosting.conf <<'SYSCTL'

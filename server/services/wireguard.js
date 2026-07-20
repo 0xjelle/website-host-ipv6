@@ -7,6 +7,7 @@ const path = require('path');
 const { execFile } = require('child_process');
 const config = require('../config');
 const { db } = require('../db');
+const wgdir = require('./wgdir');
 
 // ── keys ────────────────────────────────────────────────────────────
 function genKeypair() {
@@ -166,13 +167,14 @@ protocol bgp hosting_v4 {
 }
 
 // ── best-effort live application ────────────────────────────────────
-function wgConfPath() { return path.join(config.wgDir, 'wg0.conf'); }
+function wgConfPath() { return wgdir.dataPath('wg0'); }
+let wg0Arg = 'wg0'; // bare name (/etc/wireguard) or full path fallback
 
 function syncToDisk() {
   const conf = renderServerConf();
-  try { fs.unlinkSync(wgConfPath()); } catch {}
-  fs.writeFileSync(wgConfPath(), conf, { mode: 0o600 });
-  return wgConfPath();
+  const r = wgdir.writeIface('wg0', conf);
+  wg0Arg = r.arg;
+  return r.path;
 }
 
 function applyLive(cb) {
@@ -180,7 +182,7 @@ function applyLive(cb) {
   if (typeof process.getuid === 'function' && process.getuid() !== 0) {
     return cb({ applied: false, reason: 'config written to disk; not running as root so it was not applied live (use the systemd service)', confPath });
   }
-  execFile('wg-quick', ['strip', confPath], (err, stripped) => {
+  execFile('wg-quick', ['strip', wg0Arg], (err, stripped) => {
     if (err) return cb({ applied: false, reason: 'wg-quick not available — config written to disk only', confPath });
     const tmp = path.join(config.wgDir, 'wg0.stripped.conf');
     fs.writeFileSync(tmp, stripped, { mode: 0o600 });

@@ -9,9 +9,11 @@ const path = require('path');
 const { execFile } = require('child_process');
 const config = require('../config');
 const { db } = require('../db');
+const wgdir = require('./wgdir');
 
 const IFACE = 'uplink';
-const wgConfPath = () => path.join(config.wgDir, `${IFACE}.conf`);
+const wgConfPath = () => wgdir.dataPath(IFACE);
+let ifaceArg = IFACE; // what to pass to wg-quick (bare name or full path)
 
 function getState() {
   const s = db.prepare('SELECT uplink_wg, uplink_bird, uplink_enabled FROM wg_settings WHERE id = 1').get() || {};
@@ -34,11 +36,10 @@ function sanitizeWgConf(text) {
 function writeWgConf() {
   const { wg } = getState();
   if (!wg) return null;
-  // Recreate from scratch: a stale file from a previous (possibly
-  // non-root) run can carry ownership/permissions that break wg-quick.
-  try { fs.unlinkSync(wgConfPath()); } catch {}
-  fs.writeFileSync(wgConfPath(), wg, { mode: 0o600 });
-  return wgConfPath();
+  // Write into /etc/wireguard so wg-quick (AppArmor-confined) can read it.
+  const r = wgdir.writeIface(IFACE, wg);
+  ifaceArg = r.arg;
+  return r.path;
 }
 
 function up(cb) {
@@ -47,22 +48,24 @@ function up(cb) {
   if (typeof process.getuid === 'function' && process.getuid() !== 0) {
     return cb({ up: false, reason: 'Hosting is not running as root, so it cannot manage WireGuard. Start it via the service (sudo systemctl restart hosting) instead of npm start.' });
   }
-  execFile('wg-quick', ['up', p], (err, stdout, stderr) => {
-    const out = `${stdout || ''}${stderr || ''}`;
-    if (err && !/already exists/i.test(out)) {
-      const reason = err.code === 'ENOENT'
-        ? 'wg-quick not available on this server'
-        : `wg-quick up failed: ${out.trim().split('\n').pop()}`;
-      return cb({ up: false, reason });
-    }
-    cb({ up: true });
+  // Bring it down first (ignore result) so a re-apply picks up config changes.
+  execFile('wg-quick', ['down', ifaceArg], () => {
+    execFile('wg-quick', ['up', ifaceArg], (err, stdout, stderr) => {
+      const out = `${stdout || ''}${stderr || ''}`;
+      if (err && !/already exists/i.test(out)) {
+        const reason = err.code === 'ENOENT'
+          ? 'wg-quick not available on this server'
+          : `wg-quick up failed: ${out.trim().split('\n').pop()}`;
+        return cb({ up: false, reason });
+      }
+      cb({ up: true });
+    });
   });
 }
 
 function down(cb) {
-  const p = wgConfPath();
-  if (!fs.existsSync(p)) return cb({ down: true });
-  execFile('wg-quick', ['down', p], (err, stdout, stderr) => {
+  if (!fs.existsSync(wgConfPath())) return cb({ down: true });
+  execFile('wg-quick', ['down', ifaceArg], (err, stdout, stderr) => {
     const out = `${stdout || ''}${stderr || ''}`;
     if (err && !/is not a WireGuard interface|does not exist/i.test(out) && err.code !== 'ENOENT') {
       return cb({ down: false, reason: out.trim().split('\n').pop() });

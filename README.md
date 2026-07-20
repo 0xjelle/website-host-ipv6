@@ -44,7 +44,9 @@ existing install with `git -C /opt/hosting checkout beta && systemctl restart ho
   supported via access token.
 - **Built-in edge proxy** — routes by `Host` header **and by destination
   IPv6 address**. Every site gets a free `<slug>.<your-host>` domain, plus any
-  custom domains you add.
+  custom domains you add. When `PUBLIC_HOST` is a bare IP, the free domain uses
+  [sslip.io](https://sslip.io) wildcard DNS (`<slug>.<ip>.sslip.io`) so it
+  works on your LAN with no DNS setup; hitting the bare IP lists all sites.
 - **IPv6 auto-delegation** — set a *Site IPv6 pool* (a chunk of your own IPv6
   block routed to this server, e.g. a `/64`) and **every site automatically
   gets its own dedicated IPv6 address** out of it: allocated on creation,
@@ -231,7 +233,8 @@ Give websites their own addresses from your block:
 |---|---|---|
 | `ADMIN_PORT` | `3000` | Dashboard, API and GitHub webhooks |
 | `PROXY_PORT` | `8080` | Public edge proxy (use `80` in production) |
-| `PUBLIC_HOST` | `localhost` | Public DNS name — used for default site domains, webhook URLs and WireGuard endpoints |
+| `PUBLIC_HOST` | `localhost` | Public DNS name or IP — used for default site domains, webhook URLs and WireGuard endpoints |
+| `SITE_BASE_DOMAIN` | auto | Wildcard base for free per-site domains. Defaults to `PUBLIC_HOST`, or `<ip>.sslip.io` when `PUBLIC_HOST` is a bare IP. Set to your own `*.apps.example.com` if you have wildcard DNS. |
 | `JWT_SECRET` | auto-generated | Session signing key (persisted in `DATA_DIR`) |
 | `DATA_DIR` | `./data` | SQLite DB, site checkouts, WireGuard configs |
 | `APP_PORT_BASE` | `20100` | First internal port for Node.js apps |

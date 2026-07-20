@@ -440,7 +440,8 @@
         </div>
         <div class="card"><h2>Access</h2>
           <div class="kv">
-            <span class="k">Default URL</span><span class="v"><a href="http://${esc(site.default_domain)}" target="_blank">http://${esc(site.default_domain)}</a></span>
+            <span class="k">Default URL</span><span class="v"><a href="${esc(site.default_url)}" target="_blank">${esc(site.default_url)}</a>
+              <button class="cp" style="background:none;border:none;cursor:pointer;color:var(--ink-3)" onclick="_copy('${esc(site.default_url)}')" title="copy">⧉</button></span>
             ${site.ipv6_addr ? `<span class="k">Dedicated IPv6</span><span class="v">${esc(site.ipv6_addr)}
               <button class="cp" style="background:none;border:none;cursor:pointer;color:var(--ink-3)" onclick="_copy('${esc(site.ipv6_addr)}', 'IPv6 copied')" title="copy">⧉</button>
               <span style="color:var(--ink-3)"> — point your AAAA records here</span></span>` : ''}
@@ -570,7 +571,7 @@
           </div>
           <label class="field"><span class="lbl">Domains <span style="font-weight:400">(comma-separated)</span></span>
             <input type="text" name="domains" value="${esc(site.domains.join(', '))}" placeholder="www.example.com, example.com">
-            <span class="help">Point an A/AAAA record at this server, or use the free default: ${esc(site.default_domain)}</span></label>
+            <span class="help">Point an A/AAAA record at this server, or use the free default that works right now: <a href="${esc(site.default_url)}" target="_blank">${esc(site.default_url)}</a></span></label>
           <div class="formrow">
             <label class="field"><span class="lbl">Serve subfolder</span><input type="text" name="static_dir" value="${esc(site.static_dir)}" placeholder="dist"></label>
             <label class="field"><span class="lbl">Build command</span><input type="text" name="build_cmd" value="${esc(site.build_cmd || '')}" placeholder="npm run build"></label>

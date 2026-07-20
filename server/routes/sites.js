@@ -50,7 +50,8 @@ function publicView(site) {
     has_repo_token: !!repo_token,
     domains: JSON.parse(site.domains || '[]'),
     env_vars: JSON.parse(site.env_vars || '{}'),
-    default_domain: `${site.slug}.${config.publicHost}`,
+    default_domain: `${site.slug}.${config.siteBaseDomain}`,
+    default_url: `http://${site.slug}.${config.siteBaseDomain}${config.proxyPort === 80 ? '' : ':' + config.proxyPort}`,
     webhook_url: `http://${config.publicHost}:${config.adminPort}/api/webhooks/github/${site.id}`,
     process: site.type === 'node' ? procman.status(site.id) : null,
   };

@@ -50,6 +50,15 @@ module.exports = {
   adminPort: parseInt(process.env.ADMIN_PORT || '3000', 10),
   proxyPort: parseInt(process.env.PROXY_PORT || '8080', 10),
   publicHost: process.env.PUBLIC_HOST || 'localhost',
+  // Base domain for the free per-site subdomains. A bare IP can't have a
+  // label prefixed (jelle-md.192.168.1.226 resolves to nothing), so fall
+  // back to sslip.io wildcard DNS: <slug>.<ip>.sslip.io → <ip>. Override
+  // with SITE_BASE_DOMAIN to use your own wildcard domain (*.apps.example).
+  siteBaseDomain: (() => {
+    if (process.env.SITE_BASE_DOMAIN) return process.env.SITE_BASE_DOMAIN;
+    const h = process.env.PUBLIC_HOST || 'localhost';
+    return /^\d{1,3}(\.\d{1,3}){3}$/.test(h) ? `${h}.sslip.io` : h;
+  })(),
   appPortBase: parseInt(process.env.APP_PORT_BASE || '20100', 10),
   jwtSecret,
 };

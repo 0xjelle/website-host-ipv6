@@ -150,9 +150,12 @@ Dashboard on `:3000`, public sites on `:80`, WireGuard on `:51820/udp`.
 Both honor the *Auto-deploy on push* toggle, and a commit only deploys once.
 
 **Deploy status on GitHub:** when your GitHub account (or a per-site token) is
-connected, each deploy posts a commit status back to GitHub — the commit shows
-a **pending → ✓ success / ✗ failure** check (context "Hosting / deploy") that
-links to the site in your dashboard, just like other CI/hosting integrations.
+connected, each deploy reports back to GitHub two ways, just like Vercel/Netlify:
+
+- a **commit status** — the commit shows a pending → ✓ success / ✗ failure
+  check (context "Hosting / deploy");
+- a **GitHub Deployment** — an entry in the repo's **Environments** panel with
+  the live state and a link straight to your site's URL.
 
 **Built-in status page:** a public page at **`/status`** (linked from the
 sidebar) shows every hosted site and whether it's currently up — an overall

@@ -111,9 +111,47 @@ async function setCommitStatus(token, fullName, sha, state, description, targetU
   }
 }
 
+// Create a GitHub Deployment (shows up in the repo's Environments panel).
+// Returns the deployment id or null.
+async function createDeployment(token, fullName, ref, environment, description) {
+  try {
+    const res = await gh(token, `/repos/${fullName}/deployments`, {
+      method: 'POST',
+      body: JSON.stringify({
+        ref, environment, description: (description || '').slice(0, 140),
+        auto_merge: false, required_contexts: [],
+        transient_environment: false, production_environment: true,
+      }),
+    });
+    if (res.status === 201) return (await res.json()).id;
+    return null;
+  } catch { return null; }
+}
+
+// Update a deployment's status: queued | in_progress | success | failure.
+// environment_url links to the live site; log_url to the dashboard.
+async function setDeploymentStatus(token, fullName, id, state, opts = {}) {
+  if (!id) return { ok: false };
+  try {
+    const res = await gh(token, `/repos/${fullName}/deployments/${id}/statuses`, {
+      method: 'POST',
+      body: JSON.stringify({
+        state,
+        environment_url: opts.environment_url || undefined,
+        log_url: opts.log_url || undefined,
+        description: (opts.description || '').slice(0, 140),
+      }),
+    });
+    return { ok: res.status === 201 };
+  } catch (e) { return { ok: false, reason: e.message }; }
+}
+
 const repoFullName = (url) => {
   const m = String(url || '').match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?\/?$/i);
   return m ? m[1] : null;
 };
 
-module.exports = { getUser, listRepos, createWebhook, setCommitStatus, repoFullName, getLatestCommit };
+module.exports = {
+  getUser, listRepos, createWebhook, setCommitStatus, repoFullName, getLatestCommit,
+  createDeployment, setDeploymentStatus,
+};

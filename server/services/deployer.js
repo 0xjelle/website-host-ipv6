@@ -58,16 +58,28 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
     db.prepare('UPDATE deployments SET log = ? WHERE id = ?').run(log, depId);
   };
 
-  // Post the deploy result back to GitHub as a commit status (the ✓/✗ next
-  // to the commit). Best-effort; needs a token, repo name and a full SHA.
+  // Report deploy status to GitHub: a commit status (the ✓/✗ next to the
+  // commit) AND a Deployment (the repo's Environments panel, like Vercel).
+  // Best-effort; needs a token, repo name and a full SHA.
   let fullSha = commit.fullSha || null;
-  const ghStatus = (state, description) => {
-    if (!fullSha) return;
-    const token = tokenForSite(site);
-    const full = gh.repoFullName(site.repo_url);
-    if (!token || !full) return;
-    gh.setCommitStatus(token, full, fullSha, state, description,
-      `http://${config.publicHost}:${config.adminPort}/#/sites/${siteId}`);
+  let deploymentId = null;
+  const dashUrl = `http://${config.publicHost}:${config.adminPort}/#/sites/${siteId}`;
+  const ghToken = () => tokenForSite(site);
+  const ghRepo = () => gh.repoFullName(site.repo_url);
+
+  const siteUrl = () => {
+    const domains = JSON.parse(site.domains || '[]');
+    if (domains[0]) return `https://${domains[0]}`;
+    const port = config.proxyPort === 80 ? '' : `:${config.proxyPort}`;
+    return `http://${site.slug}.${config.siteBaseDomain}${port}`;
+  };
+
+  const ghStart = async () => {
+    const token = ghToken(), full = ghRepo();
+    if (!fullSha || !token || !full) return;
+    gh.setCommitStatus(token, full, fullSha, 'pending', 'Deploying…', dashUrl);
+    deploymentId = await gh.createDeployment(token, full, fullSha, site.name.slice(0, 60) || 'hosting', `Deploy of "${site.name}"`);
+    if (deploymentId) gh.setDeploymentStatus(token, full, deploymentId, 'in_progress', { log_url: dashUrl, description: 'Building…' });
   };
 
   const finish = (ok, msg) => {
@@ -76,7 +88,12 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
       .run(ok ? 'success' : 'failed', depId);
     db.prepare('UPDATE sites SET status = ? WHERE id = ?').run(ok ? 'live' : 'failed', siteId);
     logActivity(site.user_id, ok ? 'deploy.success' : 'deploy.failed', `"${site.name}" (${trigger})`);
-    ghStatus(ok ? 'success' : 'failure', msg);
+    const token = ghToken(), full = ghRepo();
+    if (fullSha && token && full) {
+      gh.setCommitStatus(token, full, fullSha, ok ? 'success' : 'failure', msg, ok ? siteUrl() : dashUrl);
+      gh.setDeploymentStatus(token, full, deploymentId, ok ? 'success' : 'failure',
+        { environment_url: ok ? siteUrl() : undefined, log_url: dashUrl, description: msg });
+    }
     running.delete(siteId);
   };
 
@@ -114,7 +131,7 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
         out(`   at commit ${sha}\n`);
         db.prepare('UPDATE deployments SET commit_sha = COALESCE(commit_sha, ?) WHERE id = ?').run(sha, depId);
       }
-      ghStatus('pending', 'Deploying…'); // now that we have the SHA
+      await ghStart(); // commit status + GitHub Deployment, now that we have the SHA
 
       const hasPkg = fs.existsSync(path.join(workDir, 'package.json'));
 

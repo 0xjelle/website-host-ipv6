@@ -92,8 +92,7 @@ function errorPage(res, code, title, message) {
 font-family:system-ui,sans-serif;background:#0b0e14;color:#e6e9f0}
 .card{text-align:center;padding:3rem}h1{font-size:4rem;margin:0;background:linear-gradient(135deg,#7c6cff,#38d0ff);
 -webkit-background-clip:text;background-clip:text;color:transparent}p{color:#8b93a7}</style></head>
-<body><div class="card"><h1>${code}</h1><h2>${title}</h2><p>${message}</p>
-<p style="font-size:.8rem;opacity:.6">⬡ served by Hosting</p></div></body></html>`);
+<body><div class="card"><h1>${code}</h1><h2>${title}</h2><p>${message}</p></div></body></html>`);
 }
 
 function serveStatic(site, req, res) {
@@ -126,6 +125,7 @@ function serveStatic(site, req, res) {
     'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=300',
   });
   if (req.method === 'HEAD') return res.end();
+  metrics.bytes(site.id, stat.size);
   fs.createReadStream(filePath).pipe(res);
 }
 
@@ -144,6 +144,9 @@ function proxyToApp(site, req, res) {
   };
   const upstream = http.request(opts, (ur) => {
     res.writeHead(ur.statusCode || 502, ur.headers);
+    let n = 0;
+    ur.on('data', (d) => { n += d.length; });
+    ur.on('end', () => metrics.bytes(site.id, n));
     ur.pipe(res);
   });
   upstream.on('error', () => {

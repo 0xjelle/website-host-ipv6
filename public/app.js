@@ -216,7 +216,6 @@
     $app.innerHTML = `
     <div class="shell">
       <aside class="sidebar">
-        <div class="logo"><span class="hex">⬡</span> Hosting</div>
         ${nav('overview', '◈', 'Overview')}
         ${nav('sites', '▤', 'Sites')}
         ${nav('certs', '🔒', 'Certificates')}
@@ -247,14 +246,15 @@
 
   // ── overview page ───────────────────────────────────────────────
   async function pageOverview() {
-    const [{ stats, recent }, m] = await Promise.all([api('/overview'), api('/metrics').catch(() => null)]);
+    const [{ stats, recent, bandwidth }, m] = await Promise.all([api('/overview'), api('/metrics').catch(() => null)]);
+    const bw = bandwidth || { total: 0, rateBps: 0 };
     const c = h(`
       <div>
         <div class="page-head"><h1>Overview</h1>
           <div class="sub">Hello ${esc(me.name)} — here's what's happening on your platform.</div></div>
         <div class="tiles">
           <div class="tile accent"><div class="t-label">Sites</div><div class="t-value">${stats.sites}</div><div class="t-note">${stats.liveSites} live</div></div>
-          <div class="tile"><div class="t-label">Live now</div><div class="t-value">${stats.liveSites}</div><div class="t-note">serving traffic</div></div>
+          <div class="tile"><div class="t-label">Bandwidth</div><div class="t-value" id="bw-rate">${fmtBytes(bw.rateBps)}/s</div><div class="t-note" id="bw-total">${fmtBytes(bw.total)} total served</div></div>
           <div class="tile"><div class="t-label">Deployments</div><div class="t-value">${stats.deployments}</div><div class="t-note">all time</div></div>
           <div class="tile"><div class="t-label">WireGuard peers</div><div class="t-value">${stats.peers}</div><div class="t-note">tunnels configured</div></div>
         </div>
@@ -282,6 +282,16 @@
       lineChart(main.querySelector('#ch-traffic'), m.traffic.map(p => ({ t: p.t, v: p.n })), { unit: ' req', label: 'Requests per minute' });
       deployBars(main.querySelector('#ch-deploys'), deployDays(m.deploys));
     }
+    // live bandwidth refresh
+    const bwTimer = setInterval(async () => {
+      if (!document.body.contains(main)) return clearInterval(bwTimer);
+      try {
+        const { bandwidth } = await api('/overview');
+        const r = main.querySelector('#bw-rate'), t = main.querySelector('#bw-total');
+        if (r && bandwidth) r.textContent = `${fmtBytes(bandwidth.rateBps)}/s`;
+        if (t && bandwidth) t.textContent = `${fmtBytes(bandwidth.total)} total served`;
+      } catch {}
+    }, 5000);
   }
 
   // ── sites list ──────────────────────────────────────────────────

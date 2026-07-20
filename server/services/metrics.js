@@ -9,6 +9,9 @@ const TRAFFIC_KEEP_MIN = 120;  // 2 hours of per-minute buckets
 
 const sysSamples = [];         // [{t, loadPct, memPct}]
 const trafficBuckets = [];     // [{t: epochMinute, counts: {siteId: n}}]
+const byteBuckets = [];        // [{t: epochMinute, bytes: {siteId: n}}]
+let bytesTotalAll = 0;
+const bytesTotalBySite = {};   // cumulative bytes served, per site
 
 function sampleSystem() {
   const loadPct = Math.min(100, Math.round(os.loadavg()[0] / os.cpus().length * 100));
@@ -26,6 +29,53 @@ function hit(siteId) {
     if (trafficBuckets.length > TRAFFIC_KEEP_MIN) trafficBuckets.splice(0, trafficBuckets.length - TRAFFIC_KEEP_MIN);
   }
   bucket.counts[siteId] = (bucket.counts[siteId] || 0) + 1;
+}
+
+// Record bytes served for a site (response body size).
+function bytes(siteId, n) {
+  if (!n) return;
+  bytesTotalAll += n;
+  bytesTotalBySite[siteId] = (bytesTotalBySite[siteId] || 0) + n;
+  const minute = Math.floor(Date.now() / 60_000);
+  let bucket = byteBuckets[byteBuckets.length - 1];
+  if (!bucket || bucket.t !== minute) {
+    bucket = { t: minute, bytes: {} };
+    byteBuckets.push(bucket);
+    if (byteBuckets.length > TRAFFIC_KEEP_MIN) byteBuckets.splice(0, byteBuckets.length - TRAFFIC_KEEP_MIN);
+  }
+  bucket.bytes[siteId] = (bucket.bytes[siteId] || 0) + n;
+}
+
+// Total bytes served + a current transfer rate (bytes/sec over the last
+// completed minute), scoped to siteIds (or all when null).
+function bandwidth(siteIds) {
+  const wanted = siteIds === null ? null : new Set(siteIds.map(Number));
+  const sumBucket = (t) => {
+    const b = byteBuckets.find(x => x.t === t);
+    let s = 0;
+    if (b) for (const [id, n] of Object.entries(b.bytes)) if (!wanted || wanted.has(Number(id))) s += n;
+    return s;
+  };
+  let total = 0;
+  if (wanted === null) total = bytesTotalAll;
+  else for (const id of wanted) total += bytesTotalBySite[id] || 0;
+  const now = Math.floor(Date.now() / 60_000);
+  return { total, rateBps: Math.round(sumBucket(now - 1) / 60), thisMinute: sumBucket(now) };
+}
+
+// Per-minute byte series for a chart.
+function bandwidthSeries(siteIds, minutes = 60) {
+  const wanted = siteIds === null ? null : new Set(siteIds.map(Number));
+  const now = Math.floor(Date.now() / 60_000);
+  const byMinute = new Map(byteBuckets.map(b => [b.t, b]));
+  const out = [];
+  for (let m = now - minutes + 1; m <= now; m++) {
+    const bucket = byMinute.get(m);
+    let n = 0;
+    if (bucket) for (const [id, v] of Object.entries(bucket.bytes)) if (!wanted || wanted.has(Number(id))) n += v;
+    out.push({ t: m * 60_000, n });
+  }
+  return out;
 }
 
 // Continuous per-minute series for the last `minutes`, summed over siteIds
@@ -58,4 +108,4 @@ function start() {
   setInterval(sampleSystem, SYS_INTERVAL_MS).unref();
 }
 
-module.exports = { start, hit, trafficSeries, systemSeries };
+module.exports = { start, hit, bytes, bandwidth, bandwidthSeries, trafficSeries, systemSeries };

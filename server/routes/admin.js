@@ -50,7 +50,9 @@ router.get('/overview', (req, res) => {
     FROM deployments d JOIN sites s ON s.id = d.site_id
     ${req.user.role === 'admin' ? '' : 'WHERE s.user_id = ' + req.user.id}
     ORDER BY d.id DESC LIMIT 8`).all();
-  res.json({ stats, recent });
+  const siteIds = req.user.role === 'admin' ? null : db.prepare('SELECT id FROM sites WHERE user_id = ?').all(req.user.id).map(r => r.id);
+  const bandwidth = metrics.bandwidth(siteIds);
+  res.json({ stats, recent, bandwidth });
 });
 
 // ── admin-only endpoints ────────────────────────────────────────────

@@ -20,24 +20,43 @@ function getState() {
   return { wg: s.uplink_wg || '', bird: s.uplink_bird || '', enabled: !!s.uplink_enabled };
 }
 
-// Safety: a provider config with AllowedIPs = ::/0 or 0.0.0.0/0 and no
-// Table setting would let wg-quick replace the server's default route and
-// cut it off. Routes should come from BIRD, so pin Table = off.
+// Prepare the provider WireGuard config so the uplink never hijacks the
+// box's default route:
+//   1. Table = off  → wg-quick installs no routes (a ::/0 AllowedIPs would
+//      otherwise replace the default route and cut the server off).
+//   2. Source policy routing → traffic FROM the server's own IPv6 site pool
+//      egresses the tunnel (so your announced prefix is reachable both ways),
+//      while all other traffic keeps using the normal LAN default. Added as
+//      PostUp/PostDown so it's set up and torn down with the interface.
+const RT_TABLE = 480;
 function sanitizeWgConf(text) {
+  const notes = [];
   let t = String(text).replace(/\r\n/g, '\n').trim() + '\n';
-  let note = null;
-  if (!/^\s*Table\s*=/mi.test(t) && /^\s*AllowedIPs\s*=.*(::\/0|0\.0\.0\.0\/0)/mi.test(t)) {
+
+  if (!/^\s*Table\s*=/mi.test(t)) {
     t = t.replace(/\[Interface\]/i, '[Interface]\nTable = off');
-    note = 'Added "Table = off" so the tunnel cannot hijack the server\'s default route (BIRD manages routing instead)';
+    notes.push('Added "Table = off" so the tunnel cannot replace the server\'s default route');
   }
-  return { conf: t, note };
+
+  const pool = (db.prepare('SELECT site_v6_pool FROM wg_settings WHERE id = 1').get() || {}).site_v6_pool;
+  if (pool && !/PostUp\s*=.*lookup/i.test(t)) {
+    const up = `ip -6 rule add from ${pool} lookup ${RT_TABLE} pref ${RT_TABLE}; ip -6 route replace default dev %i table ${RT_TABLE}`;
+    const down = `ip -6 rule del from ${pool} lookup ${RT_TABLE} pref ${RT_TABLE}; ip -6 route flush table ${RT_TABLE}`;
+    t = t.replace(/\[Interface\]/i, `[Interface]\nPostUp = ${up}\nPostDown = ${down}`);
+    notes.push(`Source-routing traffic from your site pool (${pool}) out the tunnel, leaving the box's own default route untouched`);
+  }
+  return { conf: t, note: notes.join('; ') || null };
 }
 
 function writeWgConf() {
   const { wg } = getState();
   if (!wg) return null;
+  // Re-apply safety rules (Table=off + source policy routing) on every write.
+  // sanitizeWgConf is idempotent, so this upgrades a config stored before the
+  // policy-routing fix without needing the operator to re-upload it.
+  const { conf } = sanitizeWgConf(wg);
   // Write into /etc/wireguard so wg-quick (AppArmor-confined) can read it.
-  const r = wgdir.writeIface(IFACE, wg);
+  const r = wgdir.writeIface(IFACE, conf);
   ifaceArg = r.arg;
   return r.path;
 }

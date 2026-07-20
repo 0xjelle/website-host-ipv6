@@ -85,11 +85,18 @@ log syslog all;
 
 protocol device { }
 
+# NB: kernel export is OFF on purpose. Importing a full-table uplink feed
+# and pushing it into the Linux routing table hijacks the server's default
+# route and knocks it off the network. We only need to ORIGINATE prefixes
+# (that happens on the BGP session's export filter); routing to WireGuard
+# peers is already handled by each tunnel's AllowedIPs. Egress for your own
+# site prefixes via an uplink is done with source policy routing on the
+# WireGuard interface, not by installing the DFZ here.
 protocol kernel kernel6 {
-  ipv6 { export where source = RTS_BGP; };
+  ipv6 { export none; };
 }
 protocol kernel kernel4 {
-  ipv4 { export where source = RTS_BGP; };
+  ipv4 { export none; };
 }
 `;
 

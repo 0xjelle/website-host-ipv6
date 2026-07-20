@@ -227,9 +227,19 @@ that directly:
 4. Point the **Site IPv6 pool** at a chunk of that block — every website now
    gets a real, publicly routable IPv6 address from your own space.
 
-Safety: if the provider's WireGuard config routes `::/0`/`0.0.0.0/0` without
-`Table = off`, Hosting adds `Table = off` automatically so the tunnel can't
-replace the server's default route — routing decisions stay with BIRD.
+**Routing safety (important):** an uplink must never knock the server off the
+network. Hosting guarantees this by:
+
+- **`Table = off`** on the tunnel — wg-quick installs no routes, so a
+  `::/0` AllowedIPs can't replace the box's default route.
+- **No full-table import into the kernel** — BIRD holds whatever the provider
+  sends, but its kernel export is `none`, so the ~1M-route DFZ never touches
+  the Linux routing table. (Announcing your prefix does not require importing
+  the table.)
+- **Source policy routing** — if a *Site IPv6 pool* is set, traffic *from*
+  that pool egresses the tunnel (via a dedicated routing table), so your
+  announced prefix is reachable both ways while the box's own default route
+  stays on the LAN. `git`, `npm`, DNS, everything else is unaffected.
 
 ## Dedicated IPv6 per site (auto-delegation)
 

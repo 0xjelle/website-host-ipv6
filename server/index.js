@@ -17,6 +17,7 @@ app.get('/api/health', (req, res) => res.json({ ok: true, name: 'Hosting', uptim
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/sites', require('./routes/sites'));
 app.use('/api/wireguard', require('./routes/wireguard'));
+app.use('/api/github', require('./routes/github'));
 app.use('/api', require('./routes/admin'));
 
 // Dashboard SPA

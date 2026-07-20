@@ -278,10 +278,11 @@
 
   // ── sites list ──────────────────────────────────────────────────
   async function pageSites() {
-    const { sites } = await api('/sites');
+    const [{ sites }, ghState] = await Promise.all([api('/sites'), api('/github').catch(() => ({ connected: false }))]);
     const c = h(`
       <div>
         <div class="page-head"><h1>Sites</h1><div class="grow"></div>
+          <button class="btn" id="ghconnect">${ghState.connected ? `🐙 ${esc(ghState.login)}` : '🐙 Connect GitHub'}</button>
           <button class="btn primary" id="newsite">＋ New site</button></div>
         ${sites.length ? `<div class="site-grid">${sites.map(s => `
           <div class="site-card" data-id="${s.id}">
@@ -296,12 +297,52 @@
         : `<div class="empty"><div class="big">▤</div>No sites yet. Create your first one — static HTML or a Node.js app.</div>`}
       </div>`);
     const main = shell('sites', c);
-    main.querySelector('#newsite').addEventListener('click', newSiteModal);
+    main.querySelector('#newsite').addEventListener('click', () => newSiteModal(ghState));
+    main.querySelector('#ghconnect').addEventListener('click', () => githubModal(ghState));
     main.querySelectorAll('.site-card').forEach(el =>
       el.addEventListener('click', () => { location.hash = `#/sites/${el.dataset.id}`; }));
   }
 
-  function newSiteModal() {
+  function githubModal(ghState) {
+    const m = modal(ghState.connected ? `
+      <h2>GitHub connected</h2>
+      <p style="color:var(--ink-2);font-size:.9rem">Connected as <b>${esc(ghState.login)}</b>. Your private
+        repositories can be browsed and deployed, and webhooks are created automatically — no need to make
+        anything public.</p>
+      <div class="actions">
+        <button type="button" class="btn" id="cancel">Close</button>
+        <button type="button" class="btn danger" id="disconnect">Disconnect</button>
+      </div>` : `
+      <h2>Connect GitHub</h2>
+      <p style="color:var(--ink-2);font-size:.9rem">Paste a <b>Personal Access Token</b> so Hosting can deploy your
+        <b>private</b> repositories and create webhooks for you — repos never need to be public.</p>
+      <p style="color:var(--ink-3);font-size:.82rem">Create one at <b>GitHub → Settings → Developer settings →
+        Personal access tokens</b>. A <b>classic</b> token with the <code class="code">repo</code> scope (and
+        <code class="code">admin:repo_hook</code> for auto-webhooks) works; or a fine-grained token with
+        <b>Contents: Read</b> and <b>Webhooks: Read &amp; write</b>.</p>
+      <form id="ghf">
+        <label class="field"><span class="lbl">Personal Access Token</span>
+          <input type="password" name="token" required placeholder="ghp_… or github_pat_…"></label>
+        <div class="actions">
+          <button type="button" class="btn" id="cancel">Cancel</button>
+          <button type="submit" class="btn primary">Connect</button>
+        </div>
+      </form>`);
+    m.querySelector('#cancel').addEventListener('click', () => m.remove());
+    m.querySelector('#disconnect')?.addEventListener('click', async () => {
+      try { await api('/github', { method: 'DELETE' }); toast('GitHub disconnected', 'ok'); m.remove(); pageSites(); }
+      catch (e) { oops(e); }
+    });
+    m.querySelector('#ghf')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const r = await api('/github', { method: 'POST', body: { token: e.target.token.value } });
+        toast(`Connected as ${r.login}`, 'ok'); m.remove(); pageSites();
+      } catch (err) { oops(err); }
+    });
+  }
+
+  function newSiteModal(ghState = { connected: false }) {
     const m = modal(`
       <h2>Create a site</h2>
       <form id="f">
@@ -310,12 +351,17 @@
           <label class="field"><span class="lbl">Type</span>
             <select name="type"><option value="static">Static (HTML/CSS/JS)</option><option value="node">Node.js app</option></select></label>
         </div>
+        ${ghState.connected ? `
+        <label class="field"><span class="lbl">Pick a repository <span style="font-weight:400">(${esc(ghState.login)} — incl. private)</span></span>
+          <select id="repopick"><option value="">Loading your repos…</option></select>
+          <span class="help">Or paste a URL below. Private repos deploy automatically via your connected account.</span></label>` : `
+        <div class="first-user-banner" style="margin-bottom:1rem">🐙 <b>Connect GitHub</b> (button on the Sites page) to browse and deploy <b>private</b> repos without a per-site token.</div>`}
         <label class="field"><span class="lbl">GitHub repository (https)</span>
           <input type="text" name="repo_url" placeholder="https://github.com/you/repo">
-          <span class="help">Pushes to the branch below auto-deploy once you add the webhook (shown after creation).</span></label>
+          <span class="help">Pushes to the branch below auto-deploy.${ghState.connected ? ' The webhook is created for you.' : ' Add the webhook shown after creation.'}</span></label>
         <div class="formrow">
           <label class="field"><span class="lbl">Branch</span><input type="text" name="repo_branch" value="main"></label>
-          <label class="field"><span class="lbl">Access token <span style="font-weight:400">(private repos)</span></span>
+          <label class="field"><span class="lbl">Access token <span style="font-weight:400">(${ghState.connected ? 'optional — uses your account' : 'private repos'})</span></span>
             <input type="password" name="repo_token" placeholder="ghp_… (optional)"></label>
         </div>
         <div class="formrow">
@@ -335,15 +381,36 @@
         </div>
       </form>`);
     m.querySelector('#cancel').addEventListener('click', () => m.remove());
+
+    // Populate the repo picker from the connected account
+    const pick = m.querySelector('#repopick');
+    if (pick) {
+      api('/github/repos').then(({ repos }) => {
+        pick.innerHTML = '<option value="">— choose a repository —</option>' +
+          repos.map(r => `<option value="${esc(r.clone_url)}" data-branch="${esc(r.default_branch)}">${r.private ? '🔒 ' : ''}${esc(r.full_name)}</option>`).join('');
+      }).catch(() => { pick.innerHTML = '<option value="">Could not load repos</option>'; });
+      pick.addEventListener('change', () => {
+        const opt = pick.selectedOptions[0];
+        if (opt?.value) {
+          m.querySelector('input[name=repo_url]').value = opt.value.replace(/\.git$/, '');
+          m.querySelector('input[name=repo_branch]').value = opt.dataset.branch || 'main';
+          const nameInput = m.querySelector('input[name=name]');
+          if (!nameInput.value) nameInput.value = opt.textContent.replace(/^🔒 /, '').split('/')[1] || '';
+        }
+      });
+    }
+
     m.querySelector('#f').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = Object.fromEntries(new FormData(e.target));
       try {
         const body = { ...fd, domains: fd.domain ? [fd.domain] : [] };
         delete body.domain;
-        const { site } = await api('/sites', { method: 'POST', body });
+        const { site, webhook } = await api('/sites', { method: 'POST', body });
         m.remove();
         toast(`Site "${site.name}" created${site.repo_url ? ' — first deploy started' : ''}`, 'ok');
+        if (webhook?.created) toast('GitHub webhook created automatically 🎉', 'ok');
+        else if (site.repo_url && webhook && webhook.reason && !/already/.test(webhook.reason)) toast(`Webhook not auto-created: ${webhook.reason}`, '');
         location.hash = `#/sites/${site.id}`;
       } catch (err) { oops(err); }
     });
@@ -443,7 +510,8 @@
         ${site.repo_url ? `
           <p style="color:var(--ink-2);font-size:.9rem">Pushes to <code class="code">${esc(site.repo_branch)}</code> on
             <code class="code">${esc(site.repo_url)}</code> deploy automatically.
-            Add this webhook in your repo: <b>Settings → Webhooks → Add webhook</b>.</p>
+              <button class="btn small" id="mkhook" style="margin-left:.4rem">⚡ Create webhook automatically</button></p>
+          <p style="color:var(--ink-3);font-size:.82rem;margin-top:-.4rem">Connected a GitHub account? Use the button above and skip the manual steps. Otherwise add it by hand:</p>
           <label class="field"><span class="lbl">Payload URL</span>
             <div class="copybox"><code>${esc(site.webhook_url)}</code>
               <button class="cp" onclick="_copy('${esc(site.webhook_url)}')">⧉</button></div></label>
@@ -458,6 +526,14 @@
       </div>`));
       body.querySelector('#autodep')?.addEventListener('change', async (e) => {
         try { await api(`/sites/${id}`, { method: 'PATCH', body: { auto_deploy: e.target.checked } }); toast('Saved', 'ok'); } catch (err) { oops(err); }
+      });
+      body.querySelector('#mkhook')?.addEventListener('click', async (e) => {
+        e.preventDefault();
+        try {
+          const { webhook } = await api(`/sites/${id}/webhook`, { method: 'POST' });
+          if (webhook.created) toast('Webhook created on GitHub 🎉', 'ok');
+          else toast(`Not created: ${webhook.reason}`, /already/.test(webhook.reason) ? 'ok' : 'err');
+        } catch (err) { oops(err); }
       });
     }
 

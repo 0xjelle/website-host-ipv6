@@ -137,6 +137,24 @@ Static sites can set a *build command* (`npm run build`) and *serve subfolder*
 (`dist`). Node apps get `PORT` injected — listen on `process.env.PORT` and
 you're live; `npm start` is the default start command.
 
+### Private repositories (no need to make anything public)
+
+Two ways:
+
+- **Connect your GitHub account (recommended).** On the Sites page click
+  **🐙 Connect GitHub** and paste a Personal Access Token (classic with the
+  `repo` scope, plus `admin:repo_hook` for auto-webhooks; or a fine-grained
+  token with *Contents: Read* and *Webhooks: Read & write*). Then:
+  - the **New site** dialog shows a dropdown of your repositories — including
+    **private** ones (🔒) — so you pick instead of pasting a URL;
+  - private repos clone automatically using your account token, so
+    repositories never have to be public;
+  - the **push webhook is created for you** on the repo (no manual
+    Settings → Webhooks step). The token is stored encrypted (AES-256-GCM,
+    keyed from your `JWT_SECRET`) and never returned by the API.
+- **Per-site token.** Or paste a token on a single site (New site / Settings →
+  *Access token*). A per-site token overrides the account token for that site.
+
 ## Your IPv6 block + ASN over WireGuard
 
 1. **Network / VPN → New peer** — name it, and optionally enter your IPv6 prefix

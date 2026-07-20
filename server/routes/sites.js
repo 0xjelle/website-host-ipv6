@@ -6,6 +6,23 @@ const config = require('../config');
 const deployer = require('../services/deployer');
 const procman = require('../services/procman');
 const ipam = require('../services/ipam');
+const gh = require('../services/github');
+const { decrypt } = require('../crypto');
+
+const repoFullName = (url) => {
+  const m = String(url || '').match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?\/?$/i);
+  return m ? m[1] : null;
+};
+
+// Best-effort webhook creation using the owner's connected GitHub token.
+function autoWebhook(site, cb) {
+  const full = repoFullName(site.repo_url);
+  if (!full) return cb({ created: false, reason: 'not a github.com repo' });
+  const u = db.prepare('SELECT github_token FROM users WHERE id = ?').get(site.user_id);
+  if (!u?.github_token) return cb({ created: false, reason: 'GitHub account not connected' });
+  const url = `http://${config.publicHost}:${config.adminPort}/api/webhooks/github/${site.id}`;
+  gh.createWebhook(decrypt(u.github_token), full, url, site.webhook_secret).then(cb).catch(e => cb({ created: false, reason: e.message }));
+}
 
 const router = express.Router();
 router.use(requireAuth);
@@ -79,7 +96,25 @@ router.post('/', (req, res) => {
   const site = db.prepare('SELECT * FROM sites WHERE id = ?').get(r.lastInsertRowid);
   logActivity(req.user.id, 'site.create', `"${site.name}" (${site.type})`);
   if (site.repo_url) deployer.deploy(site.id, 'manual');
-  res.status(201).json({ site: publicView(site) });
+
+  const respond = (webhook) => res.status(201).json({ site: publicView(site), webhook });
+  if (site.repo_url && req.body.auto_webhook !== false) {
+    autoWebhook(site, (webhook) => {
+      if (webhook.created) logActivity(req.user.id, 'webhook.create', `"${site.name}"`);
+      respond(webhook);
+    });
+  } else respond(null);
+});
+
+// Manually (re)create the GitHub webhook via the connected account.
+router.post('/:id/webhook', (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  if (!site.repo_url) return res.status(400).json({ error: 'No repository connected' });
+  autoWebhook(site, (webhook) => {
+    if (webhook.created) logActivity(req.user.id, 'webhook.create', `"${site.name}"`);
+    res.json({ webhook });
+  });
 });
 
 router.get('/:id', (req, res) => {

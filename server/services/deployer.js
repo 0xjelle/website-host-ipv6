@@ -18,11 +18,21 @@ function sh(cmd, args, opts, onOutput) {
   });
 }
 
+// A site's own token wins; otherwise fall back to the owner's connected
+// GitHub account token so private repos clone without a per-site token.
+function tokenForSite(site) {
+  if (site.repo_token) return site.repo_token;
+  const u = db.prepare('SELECT github_token FROM users WHERE id = ?').get(site.user_id);
+  if (u?.github_token) { try { return require('../crypto').decrypt(u.github_token); } catch {} }
+  return null;
+}
+
 function authedRepoUrl(site) {
-  if (!site.repo_token || !site.repo_url?.startsWith('https://')) return site.repo_url;
+  const token = tokenForSite(site);
+  if (!token || !site.repo_url?.startsWith('https://')) return site.repo_url;
   const u = new URL(site.repo_url);
   u.username = 'x-access-token';
-  u.password = site.repo_token;
+  u.password = token;
   return u.toString();
 }
 
@@ -41,7 +51,8 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
 
   let log = '';
   const out = (s) => {
-    log += s;
+    // never persist credentials embedded in an authenticated clone URL
+    log += String(s).replace(/x-access-token:[^@\s]+@/g, 'x-access-token:***@');
     if (log.length > 200_000) log = log.slice(-200_000);
     db.prepare('UPDATE deployments SET log = ? WHERE id = ?').run(log, depId);
   };

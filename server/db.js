@@ -99,6 +99,8 @@ addColumn('sites', 'app_pid INTEGER');
 addColumn('wg_settings', 'uplink_wg TEXT');                          // provider WireGuard client config
 addColumn('wg_settings', 'uplink_bird TEXT');                        // provider BIRD config (as uploaded)
 addColumn('wg_settings', 'uplink_enabled INTEGER NOT NULL DEFAULT 0');
+addColumn('users', 'github_token TEXT');   // encrypted account GitHub PAT
+addColumn('users', 'github_login TEXT');   // GitHub username for display
 
 function logActivity(userId, action, detail = '') {
   db.prepare('INSERT INTO activity (user_id, action, detail) VALUES (?, ?, ?)')

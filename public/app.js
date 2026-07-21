@@ -593,6 +593,7 @@
           <div class="kv">
             <span class="k">Default URL</span><span class="v"><a href="${esc(site.default_url)}" target="_blank">${esc(site.default_url)}</a>
               <button class="cp" style="background:none;border:none;cursor:pointer;color:var(--ink-3)" onclick="_copy('${esc(site.default_url)}')" title="copy">⧉</button></span>
+            ${site.status === 'stopped' ? `<span class="k"></span><span class="v" style="color:#f0b429">⏸ Stopped — not public, but still ${site.type === 'node' ? 'running and reachable' : 'reachable'} at the default URL above so you can test it locally. Custom domains and the dedicated IPv6 stay offline.</span>` : ''}
             ${site.ipv6_addr ? `<span class="k">Dedicated IPv6</span><span class="v">${esc(site.ipv6_addr)}
               <button class="cp" style="background:none;border:none;cursor:pointer;color:var(--ink-3)" onclick="_copy('${esc(site.ipv6_addr)}', 'IPv6 copied')" title="copy">⧉</button>
               <span style="color:var(--ink-3)"> — point your AAAA records here</span></span>` : ''}

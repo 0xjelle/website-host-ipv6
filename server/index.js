@@ -48,9 +48,10 @@ require('./services/sftp').start();       // built-in SFTP server for file uploa
 require('./services/poller').start();     // poll GitHub for pushes (auto-deploy behind NAT)
 require('./services/acme').startRenewals(); // stage SSL renewals before expiry
 
-// Resume node apps that were live before the restart (reaping any process
-// groups a previous platform run left behind so ports are free)
-for (const site of db.prepare("SELECT * FROM sites WHERE type = 'node' AND status = 'live'").all()) {
+// Resume node apps that were running before the restart (reaping any process
+// groups a previous platform run left behind so ports are free). Stopped apps
+// keep running locally for testing, so they're resumed too.
+for (const site of db.prepare("SELECT * FROM sites WHERE type = 'node' AND status IN ('live','stopped')").all()) {
   console.log(`↻ resuming site #${site.id} "${site.name}"`);
   procman.reapStale(site);
   try { procman.start(site, config); } catch (e) { console.error(`  failed: ${e.message}`); }

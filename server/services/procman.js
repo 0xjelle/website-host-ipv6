@@ -65,13 +65,16 @@ function start(site, config) {
     appendLog(entry, `■ process exited (code=${code} signal=${signal})`);
     entry.child = null;
     const current = db.prepare('SELECT status FROM sites WHERE id = ?').get(site.id);
-    // Auto-restart crashed apps (max 5 rapid restarts), unless deliberately stopped
-    if (current && current.status === 'live' && entry.restarts < 5) {
+    // 'live' apps are public; 'stopped' apps still run locally for testing.
+    // Both are supervised. A deliberate stop() detaches this listener, so this
+    // only fires on real crashes — auto-restart (max 5 rapid restarts).
+    const supervised = current && (current.status === 'live' || current.status === 'stopped');
+    if (supervised && entry.restarts < 5) {
       entry.restarts += 1;
       appendLog(entry, `↻ auto-restarting (attempt ${entry.restarts}/5)`);
       const fresh = db.prepare('SELECT * FROM sites WHERE id = ?').get(site.id);
       setTimeout(() => { if (procs.get(site.id) === entry) start(fresh, config); }, 1500 * entry.restarts);
-    } else if (current && current.status === 'live') {
+    } else if (supervised) {
       db.prepare("UPDATE sites SET status = 'failed' WHERE id = ?").run(site.id);
       logActivity(site.user_id, 'site.crashed', `Site "${site.name}" crashed repeatedly and was marked failed`);
     }

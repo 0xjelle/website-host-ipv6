@@ -25,14 +25,21 @@ const MIME = {
   '.map': 'application/json',
 };
 
-function findSite(req) {
-  const sites = db.prepare("SELECT * FROM sites WHERE status IN ('live','deploying')").all();
+// Match an incoming request to a site, reporting *how* it matched:
+//   'free'   — the free per-site link (<slug>.<base>, e.g. <slug>.<ip>.sslip.io,
+//              or <slug>.<publicHost>)
+//   'custom' — a user-added custom domain
+//   'ipv6'   — the site's dedicated IPv6 address (connected-to address or Host)
+// The route matters for stopped sites: a stopped site stays reachable on its
+// free local link, but drops off its public custom domains + dedicated IPv6.
+function matchSite(req) {
+  const sites = db.prepare("SELECT * FROM sites WHERE status IN ('live','deploying','stopped')").all();
 
   // 1. dedicated IPv6: match the address the client actually connected to
   const local = normalizeV6(req.socket.localAddress);
   if (local) {
     for (const site of sites) {
-      if (site.ipv6_addr && normalizeV6(site.ipv6_addr) === local) return site;
+      if (site.ipv6_addr && normalizeV6(site.ipv6_addr) === local) return { site, route: 'ipv6' };
     }
   }
 
@@ -43,14 +50,31 @@ function findSite(req) {
   const bracket = host.match(/^\[([^\]]+)\]/);
   const hostname = (bracket ? bracket[1] : host.split(':')[0]).toLowerCase();
   const base = config.siteBaseDomain.toLowerCase();
+  const pub = config.publicHost.toLowerCase();
   for (const site of sites) {
     const domains = JSON.parse(site.domains || '[]');
-    if (domains.some(d => d.toLowerCase() === hostname)) return site;
-    if (hostname === `${site.slug}.${base}`) return site;
-    if (hostname === `${site.slug}.${config.publicHost.toLowerCase()}`) return site;
-    if (site.ipv6_addr && normalizeV6(hostname) === normalizeV6(site.ipv6_addr)) return site;
+    if (domains.some(d => d.toLowerCase() === hostname)) return { site, route: 'custom' };
+    if (hostname === `${site.slug}.${base}`) return { site, route: 'free' };
+    if (hostname === `${site.slug}.${pub}`) return { site, route: 'free' };
+    if (site.ipv6_addr && normalizeV6(hostname) === normalizeV6(site.ipv6_addr)) return { site, route: 'ipv6' };
   }
   return null;
+}
+
+// Should this match be served? Live/deploying sites serve on any route. A
+// stopped site stays reachable only on its free local link (so you can still
+// open its <slug>.<ip>.sslip.io URL), while its public custom domains and
+// dedicated IPv6 go dark.
+function isServable(match) {
+  if (!match) return false;
+  if (match.site.status !== 'stopped') return true;
+  return match.route === 'free';
+}
+
+// Back-compat helper: the site that would actually be served for this request.
+function findSite(req) {
+  const match = matchSite(req);
+  return isServable(match) ? match.site : null;
 }
 
 // When someone hits the bare host (the IP/domain root with no site match),
@@ -63,13 +87,16 @@ function isBareHost(req) {
       || host === 'localhost';
 }
 
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
 function siteIndexPage(res) {
   const portSuffix = config.proxyPort === 80 ? '' : `:${config.proxyPort}`;
-  const sites = db.prepare("SELECT * FROM sites WHERE status IN ('live','deploying') ORDER BY name").all();
+  const sites = db.prepare("SELECT * FROM sites WHERE status IN ('live','deploying','stopped') ORDER BY name").all();
   const rows = sites.map(s => {
     const url = `http://${s.slug}.${config.siteBaseDomain}${portSuffix}`;
-    return `<li><a href="${url}">${s.name}</a> <span class="u">${url}</span></li>`;
-  }).join('') || '<li class="empty">No live sites yet.</li>';
+    const tag = s.status === 'stopped' ? ' <span class="tag">stopped</span>' : '';
+    return `<li><a href="${esc(url)}">${esc(s.name)}</a>${tag} <span class="u">${esc(url)}</span></li>`;
+  }).join('') || '<li class="empty">No sites yet.</li>';
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Hosting · sites</title>
 <style>body{margin:0;min-height:100vh;background:#0b0e14;color:#e6e9f0;
@@ -80,6 +107,7 @@ ul{list-style:none;padding:0;margin:1.5rem 0 0}li{padding:.8rem 1rem;border:1px 
 margin-bottom:.6rem;display:flex;justify-content:space-between;align-items:center;gap:1rem}
 a{color:#38d0ff;text-decoration:none;font-weight:600}a:hover{text-decoration:underline}
 .u{color:#626c80;font-size:.8rem;font-family:ui-monospace,monospace}.empty{color:#626c80;justify-content:center}
+.tag{color:#f0b429;border:1px solid #3a2b12;background:#2a1e0c;border-radius:999px;padding:.05rem .5rem;font-size:.7rem;font-weight:600;margin-right:auto}
 .sub{color:#8b93a7;font-size:.9rem;margin-top:.3rem}</style></head>
 <body><div class="wrap"><h1><span class="hex">⬡</span> Hosting</h1>
 <div class="sub">Sites served from this server:</div><ul>${rows}</ul></div></body></html>`);
@@ -156,19 +184,24 @@ function proxyToApp(site, req, res) {
 }
 
 function handleRequest(req, res) {
-  const site = findSite(req);
-  if (!site) {
+  const match = matchSite(req);
+  if (!isServable(match)) {
     if (isBareHost(req)) return siteIndexPage(res);
     return errorPage(res, 404, 'No site here', `No site is configured for <b>${(req.headers.host || 'this host').split(':')[0]}</b>.`);
   }
+  const { site } = match;
+  // Stopped sites are served exactly like live ones on their free local link
+  // (node apps keep running so you can test them; static files serve from
+  // disk) — isServable() has already kept them off their public routes.
   metrics.hit(site.id);
   if (site.type === 'node') return proxyToApp(site, req, res);
   return serveStatic(site, req, res);
 }
 
 function handleUpgrade(req, socket) {
-  const site = findSite(req);
-  if (!site || site.type !== 'node') return socket.destroy();
+  const match = matchSite(req);
+  if (!isServable(match) || match.site.type !== 'node') return socket.destroy();
+  const site = match.site;
   const upstream = http.request({
     host: '127.0.0.1', port: site.app_port, path: req.url, method: req.method, headers: req.headers,
   });

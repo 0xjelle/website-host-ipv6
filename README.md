@@ -47,6 +47,11 @@ existing install with `git -C /opt/hosting checkout beta && systemctl restart ho
   custom domains you add. When `PUBLIC_HOST` is a bare IP, the free domain uses
   [sslip.io](https://sslip.io) wildcard DNS (`<slug>.<ip>.sslip.io`) so it
   works on your LAN with no DNS setup; hitting the bare IP lists all sites.
+  **Stopping a site** takes it off its public custom domains and dedicated IPv6,
+  but it stays reachable on this free `<slug>.<host>` link — so a stopped site
+  works as a local staging copy you can test before making it live again. Static
+  files keep serving; Node apps **keep running** (and are resumed on reboot),
+  just without any public exposure.
 - **IPv6 auto-delegation** — set a *Site IPv6 pool* (a chunk of your own IPv6
   block routed to this server, e.g. a `/64`) and **every site automatically
   gets its own dedicated IPv6 address** out of it: allocated on creation,

@@ -182,8 +182,15 @@ router.post('/:id/deploy', async (req, res) => {
 router.post('/:id/stop', (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;
+  // "Stop" unpublishes the site from its public custom domains + dedicated
+  // IPv6, but keeps it reachable on its free local link. For node apps we keep
+  // the process running (starting it if it isn't) so you can still test the
+  // site locally before making it live again.
   db.prepare("UPDATE sites SET status = 'stopped' WHERE id = ?").run(site.id);
-  procman.stop(site.id);
+  if (site.type === 'node' && !procman.status(site.id).running) {
+    procman.resetRestarts(site.id);
+    procman.start(db.prepare('SELECT * FROM sites WHERE id = ?').get(site.id), config);
+  }
   logActivity(req.user.id, 'site.stop', `"${site.name}"`);
   res.json({ ok: true });
 });

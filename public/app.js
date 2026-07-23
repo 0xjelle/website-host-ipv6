@@ -1473,8 +1473,9 @@
           When a user adds their <b>own</b> domain to a site, the platform registers it as a Cloudflare
           <b>custom hostname</b> under your zone and shows them a single <b>CNAME</b> to add — no TXT record
           needed (HTTP validation). Cloudflare then auto-issues the certificate and filters DDoS for it.
-          Needs a Cloudflare API token with <b>Zone → SSL and Certificates → Edit</b> and
-          <b>Zone → DNS → Edit</b> on the zone, plus a <b>fallback origin</b> that all custom hostnames route to.</p>
+          Needs your <b>Zone ID</b> + <b>Account ID</b>, a Cloudflare API token with
+          <b>Zone → SSL and Certificates → Edit</b> and <b>Zone → DNS → Edit</b> on the zone, plus a
+          <b>fallback origin</b> that all custom hostnames route to.</p>
         <form id="saasf">
           <label class="field" style="display:flex;align-items:center;gap:.5rem">
             <input type="checkbox" name="enabled" style="width:auto" ${saas.enabled ? 'checked' : ''}>
@@ -1483,9 +1484,9 @@
             <label class="field"><span class="lbl">Zone ID</span>
               <input type="text" name="zone_id" value="${esc(saas.zone_id || '')}" placeholder="32-char zone id">
               <span class="help">Your zone's Overview page → API → Zone ID.</span></label>
-            <label class="field"><span class="lbl">Account ID <span style="font-weight:400">(optional)</span></span>
-              <input type="text" name="account_id" value="${esc(saas.account_id || '')}" placeholder="32-char account id">
-              <span class="help">Not required for custom hostnames. Lets Test verify the token and enables future zone provisioning.</span></label>
+            <label class="field"><span class="lbl">Account ID <span style="color:var(--warn)">(required)</span></span>
+              <input type="text" name="account_id" value="${esc(saas.account_id || '')}" placeholder="32-char account id" required>
+              <span class="help">Required. Same panel as the Zone ID (right sidebar → Account ID). Cloudflare for SaaS stays off until this is set.</span></label>
           </div>
           <div class="formrow">
             <label class="field"><span class="lbl">Fallback origin</span>

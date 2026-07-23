@@ -36,10 +36,13 @@ function getConfig() {
 
 function hasToken() { return !!getSetting('cf_api_token', ''); }
 
-// Fully usable only when enabled AND a token + zone are present.
+// Fully usable only when enabled AND a token + zone + account are present.
+// The account id is required by configuration (the custom-hostname API itself
+// authenticates with the token, but we enforce the account id so the setup is
+// complete and account-scoped calls — e.g. Test, future zone provisioning — work).
 function isEnabled() {
   const c = getConfig();
-  return c.enabled && !!c.token && !!c.zoneId;
+  return c.enabled && !!c.token && !!c.zoneId && !!c.accountId;
 }
 
 function saveConfig(fields) {
@@ -89,18 +92,15 @@ function api(method, path, body, tokenOverride) {
   });
 }
 
-// Validate a token + zone (used by the "Test" button). Returns the zone name.
-// If an account id is supplied, also confirm the token can see that account —
-// catches a mis-scoped token early (and is required for zone auto-provisioning).
+// Validate token + zone + account (used by the "Test" button). Both the zone
+// and the account id are required; confirming the token can see the account
+// catches a mis-scoped token early (and is needed for zone auto-provisioning).
 async function testConfig(token, zoneId, accountId) {
   if (!zoneId) throw new Error('Zone ID is required');
+  if (!accountId) throw new Error('Account ID is required');
   const zone = await api('GET', `/zones/${zoneId}`, null, token);
-  let account_name = null;
-  if (accountId) {
-    const acct = await api('GET', `/accounts/${accountId}`, null, token);
-    account_name = acct.name;
-  }
-  return { zone_name: zone.name, zone_status: zone.status, account_name };
+  const acct = await api('GET', `/accounts/${accountId}`, null, token);
+  return { zone_name: zone.name, zone_status: zone.status, account_name: acct.name };
 }
 
 // ── fallback origin (where all custom hostnames route) ──────────────

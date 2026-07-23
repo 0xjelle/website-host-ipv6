@@ -25,6 +25,12 @@ function getConfig() {
     zoneId: getSetting('cf_zone_id', '') || '',
     fallbackOrigin: getSetting('cf_fallback_origin', '') || '',
     token: decrypt(getSetting('cf_api_token', '')) || '',
+    // Optional. Only needed if we ever create full zones (POST /zones needs
+    // account.id); the custom-hostname calls below are all zone-scoped.
+    accountId: getSetting('cf_account_id', '') || '',
+    // Optional. The server's public IP that the fallback-origin DNS record
+    // should point at, so we can auto-create that record. IPv4 or IPv6.
+    originIp: getSetting('cf_origin_ip', '') || '',
   };
 }
 
@@ -39,6 +45,8 @@ function isEnabled() {
 function saveConfig(fields) {
   if (fields.enabled !== undefined) setSetting('cf_saas_enabled', fields.enabled ? '1' : '0');
   if (fields.zoneId !== undefined) setSetting('cf_zone_id', String(fields.zoneId).trim());
+  if (fields.accountId !== undefined) setSetting('cf_account_id', String(fields.accountId).trim());
+  if (fields.originIp !== undefined) setSetting('cf_origin_ip', String(fields.originIp).trim());
   if (fields.fallbackOrigin !== undefined) setSetting('cf_fallback_origin', String(fields.fallbackOrigin).trim().toLowerCase());
   if (fields.token !== undefined) {
     const t = String(fields.token).trim();
@@ -82,10 +90,17 @@ function api(method, path, body, tokenOverride) {
 }
 
 // Validate a token + zone (used by the "Test" button). Returns the zone name.
-async function testConfig(token, zoneId) {
+// If an account id is supplied, also confirm the token can see that account —
+// catches a mis-scoped token early (and is required for zone auto-provisioning).
+async function testConfig(token, zoneId, accountId) {
   if (!zoneId) throw new Error('Zone ID is required');
   const zone = await api('GET', `/zones/${zoneId}`, null, token);
-  return { zone_name: zone.name, zone_status: zone.status };
+  let account_name = null;
+  if (accountId) {
+    const acct = await api('GET', `/accounts/${accountId}`, null, token);
+    account_name = acct.name;
+  }
+  return { zone_name: zone.name, zone_status: zone.status, account_name };
 }
 
 // ── fallback origin (where all custom hostnames route) ──────────────
@@ -98,13 +113,49 @@ function getFallbackOrigin() {
   return api('GET', `/zones/${zoneId}/custom_hostnames/fallback_origin`);
 }
 
+// A/AAAA depending on whether the origin IP looks like IPv6.
+const recordTypeForIp = (ip) => (String(ip).includes(':') ? 'AAAA' : 'A');
+
+// The fallback origin only goes "active" once a matching PROXIED A/AAAA/CNAME
+// record for it exists in the zone (otherwise Cloudflare parks it in
+// pending_deployment). We create/update that record ourselves so the admin
+// doesn't have to add it by hand. Needs originIp set; no-op otherwise.
+async function ensureFallbackOriginRecord() {
+  const { zoneId, fallbackOrigin, originIp } = getConfig();
+  if (!zoneId || !fallbackOrigin || !originIp) {
+    return { ok: false, skipped: 'need zone, fallback origin, and origin IP' };
+  }
+  const type = recordTypeForIp(originIp);
+  const existing = await api('GET', `/zones/${zoneId}/dns_records?name=${encodeURIComponent(fallbackOrigin)}`);
+  const body = { type, name: fallbackOrigin, content: originIp, proxied: true, ttl: 1 };
+  const match = (existing || []).find(r => r.name === fallbackOrigin && (r.type === 'A' || r.type === 'AAAA'));
+  if (match) {
+    await api('PATCH', `/zones/${zoneId}/dns_records/${match.id}`, body);
+    return { ok: true, action: 'updated', type };
+  }
+  await api('POST', `/zones/${zoneId}/dns_records`, body);
+  return { ok: true, action: 'created', type };
+}
+
 // ── custom hostnames ────────────────────────────────────────────────
 function createHostname(hostname) {
   const { zoneId } = getConfig();
-  return api('POST', `/zones/${zoneId}/custom_hostnames`, {
+  // HTTP DV: once the customer's CNAME points at Cloudflare, Cloudflare serves
+  // the validation token at its own edge and issues the cert — so the customer
+  // adds ONLY the CNAME, no TXT record. (Trade-off vs. 'txt': the CNAME must be
+  // live before the first cert can issue; it can't be pre-validated.)
+  const body = {
     hostname,
-    ssl: { method: 'txt', type: 'dv', settings: { min_tls_version: '1.0' } },
-  });
+    ssl: {
+      method: 'http',
+      type: 'dv',
+      settings: { http2: 'on', tls_1_3: 'on', min_tls_version: '1.2' },
+    },
+  };
+  // A cert Common Name can't exceed 64 chars; longer hostnames must use
+  // Cloudflare branding (CN becomes sni.cloudflaressl.com) or issuance fails.
+  if (hostname.length > 64) body.cloudflare_branding = true;
+  return api('POST', `/zones/${zoneId}/custom_hostnames`, body);
 }
 function getHostname(cfId) {
   const { zoneId } = getConfig();
@@ -115,24 +166,21 @@ function deleteHostname(cfId) {
   return api('DELETE', `/zones/${zoneId}/custom_hostnames/${cfId}`);
 }
 
-// Pull the records a user must add out of a Cloudflare custom-hostname result:
-// the CNAME target, the ownership-verification record, and the SSL DCV record(s).
+// Pull the records the CUSTOMER must add out of a Cloudflare custom-hostname
+// result. With HTTP DV that's just the single routing CNAME — Cloudflare serves
+// both the SSL token and the ownership token at its edge once the CNAME points
+// at us, so no TXT is required. We keep a defensive fallback: if Cloudflare ever
+// returns a TXT DCV record (e.g. a txt-method hostname), we still surface it so
+// the UI stays correct.
 function extractVerification(result) {
   const out = { cname_target: getConfig().fallbackOrigin || null, ownership: null, ssl_records: [] };
-  if (result.ownership_verification && result.ownership_verification.name) {
-    out.ownership = {
-      type: result.ownership_verification.type || 'txt',
-      name: result.ownership_verification.name,
-      value: result.ownership_verification.value,
-    };
-  }
   const ssl = result.ssl || {};
-  if (Array.isArray(ssl.validation_records)) {
-    for (const r of ssl.validation_records) {
-      if (r.txt_name && r.txt_value) out.ssl_records.push({ type: 'txt', name: r.txt_name, value: r.txt_value });
-    }
-  } else if (ssl.txt_name && ssl.txt_value) {
-    out.ssl_records.push({ type: 'txt', name: ssl.txt_name, value: ssl.txt_value });
+  const records = Array.isArray(ssl.validation_records) ? ssl.validation_records
+    : (ssl.txt_name && ssl.txt_value ? [ssl] : []);
+  for (const r of records) {
+    // Only DNS records the customer has to create matter here. HTTP-DV records
+    // carry http_url/http_body (served at the edge) and need no customer action.
+    if (r.txt_name && r.txt_value) out.ssl_records.push({ type: 'txt', name: r.txt_name, value: r.txt_value });
   }
   return out;
 }
@@ -260,7 +308,7 @@ function start() {
 
 module.exports = {
   getConfig, hasToken, isEnabled, saveConfig, testConfig,
-  setFallbackOrigin, getFallbackOrigin,
+  setFallbackOrigin, getFallbackOrigin, ensureFallbackOriginRecord,
   syncDomainsForSite, rowsForSite, view, allHostnames,
   cfIdsForSite, deleteIds, refreshStatuses, isRealDomain, start,
 };

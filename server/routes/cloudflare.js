@@ -52,6 +52,8 @@ router.get('/saas', (req, res) => {
   res.json({
     enabled: c.enabled,
     zone_id: c.zoneId,
+    account_id: c.accountId,
+    origin_ip: c.originIp,
     fallback_origin: c.fallbackOrigin,
     has_token: saas.hasToken(),
     hostnames: saas.allHostnames(),
@@ -63,18 +65,28 @@ router.patch('/saas', async (req, res) => {
   saas.saveConfig({
     enabled: b.enabled,
     zoneId: b.zone_id,
+    accountId: b.account_id,
+    originIp: b.origin_ip,
     fallbackOrigin: b.fallback_origin,
     token: b.token, // undefined = leave, '' = clear, value = set (encrypted)
   });
   logActivity(req.user.id, 'cloudflare.saas.config', `enabled=${saas.isEnabled()}`);
-  // Best-effort: register the fallback origin with Cloudflare when we can.
-  let note = null;
+  // Best-effort: create/update the proxied fallback-origin DNS record, then
+  // point Cloudflare's fallback origin at it. Each step reports its own note so
+  // a partial failure is visible without blocking the save.
+  const notes = [];
   const c = saas.getConfig();
   if (c.enabled && c.token && c.zoneId && c.fallbackOrigin) {
+    if (c.originIp) {
+      try { const r = await saas.ensureFallbackOriginRecord(); if (r.ok) notes.push(`Fallback-origin DNS record ${r.action} (${r.type}, proxied).`); }
+      catch (e) { notes.push(`Could not create the fallback-origin DNS record: ${e.message}`); }
+    } else {
+      notes.push('Tip: set the origin IP so the proxied fallback-origin DNS record can be created automatically.');
+    }
     try { await saas.setFallbackOrigin(c.fallbackOrigin); }
-    catch (e) { note = `Saved, but setting the fallback origin failed: ${e.message}`; }
+    catch (e) { notes.push(`Setting the fallback origin failed: ${e.message}`); }
   }
-  res.json({ ok: true, note, enabled: saas.isEnabled() });
+  res.json({ ok: true, note: notes.join(' ') || null, enabled: saas.isEnabled() });
 });
 
 router.post('/saas/test', async (req, res) => {
@@ -82,7 +94,7 @@ router.post('/saas/test', async (req, res) => {
   try {
     // Use the posted token if present, else the stored one.
     const token = b.token && String(b.token).trim() ? String(b.token).trim() : saas.getConfig().token;
-    const r = await saas.testConfig(token, b.zone_id || saas.getConfig().zoneId);
+    const r = await saas.testConfig(token, b.zone_id || saas.getConfig().zoneId, b.account_id || saas.getConfig().accountId);
     res.json({ ok: true, ...r });
   } catch (e) {
     res.status(400).json({ error: e.message });

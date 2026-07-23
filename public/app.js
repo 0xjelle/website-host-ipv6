@@ -1471,10 +1471,10 @@
         <h2>Cloudflare for SaaS <span class="hint">route users' own custom domains through Cloudflare</span></h2>
         <p style="color:var(--ink-2);font-size:.9rem;margin:.2rem 0 1rem">
           When a user adds their <b>own</b> domain to a site, the platform registers it as a Cloudflare
-          <b>custom hostname</b> under your zone and shows them a single <b>CNAME</b> to add. Cloudflare then
-          issues the certificate and filters DDoS for it. Needs a Cloudflare API token with
-          <b>SSL and Certificates → Edit</b> on the zone, and a <b>fallback origin</b> (a proxied record in
-          your zone pointing at this server).</p>
+          <b>custom hostname</b> under your zone and shows them a single <b>CNAME</b> to add — no TXT record
+          needed (HTTP validation). Cloudflare then auto-issues the certificate and filters DDoS for it.
+          Needs a Cloudflare API token with <b>Zone → SSL and Certificates → Edit</b> and
+          <b>Zone → DNS → Edit</b> on the zone, plus a <b>fallback origin</b> that all custom hostnames route to.</p>
         <form id="saasf">
           <label class="field" style="display:flex;align-items:center;gap:.5rem">
             <input type="checkbox" name="enabled" style="width:auto" ${saas.enabled ? 'checked' : ''}>
@@ -1483,13 +1483,21 @@
             <label class="field"><span class="lbl">Zone ID</span>
               <input type="text" name="zone_id" value="${esc(saas.zone_id || '')}" placeholder="32-char zone id">
               <span class="help">Your zone's Overview page → API → Zone ID.</span></label>
+            <label class="field"><span class="lbl">Account ID <span style="font-weight:400">(optional)</span></span>
+              <input type="text" name="account_id" value="${esc(saas.account_id || '')}" placeholder="32-char account id">
+              <span class="help">Not required for custom hostnames. Lets Test verify the token and enables future zone provisioning.</span></label>
+          </div>
+          <div class="formrow">
             <label class="field"><span class="lbl">Fallback origin</span>
               <input type="text" name="fallback_origin" value="${esc(saas.fallback_origin || '')}" placeholder="customers.${esc(st.public_host)}">
-              <span class="help">A <b>proxied</b> A/AAAA record in your zone pointing at this server. Custom hostnames route here.</span></label>
+              <span class="help">A hostname in your zone (e.g. <code class="code">customers.${esc(st.public_host)}</code>). All custom hostnames route here.</span></label>
+            <label class="field"><span class="lbl">Origin IP <span style="font-weight:400">(recommended)</span></span>
+              <input type="text" name="origin_ip" value="${esc(saas.origin_ip || '')}" placeholder="this server's public IPv6 or IPv4">
+              <span class="help">If set, the proxied fallback-origin DNS record (A/AAAA) is created for you. Leave blank to create it by hand.</span></label>
           </div>
           <label class="field"><span class="lbl">API token ${saas.has_token ? '<span style="color:var(--good)">✓ stored — leave blank to keep</span>' : ''}</span>
             <input type="password" name="token" placeholder="${saas.has_token ? '•••••••• stored (type to replace)' : 'Cloudflare API token'}">
-            <span class="help">Stored encrypted. Scope: Zone · SSL and Certificates · Edit for your zone.</span></label>
+            <span class="help">Stored encrypted. Scope: Zone · SSL and Certificates · Edit <b>and</b> Zone · DNS · Edit for your zone.</span></label>
           <div style="display:flex;gap:.6rem;flex-wrap:wrap">
             <button type="button" class="btn" id="saastest">Test token &amp; zone</button>
             <button type="submit" class="btn primary">Save</button>
@@ -1583,11 +1591,15 @@
     main.querySelector('#saasf')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const form = e.target;
-      const bodyData = { enabled: form.enabled.checked, zone_id: form.zone_id.value, fallback_origin: form.fallback_origin.value };
+      const bodyData = {
+        enabled: form.enabled.checked, zone_id: form.zone_id.value,
+        account_id: form.account_id.value, origin_ip: form.origin_ip.value,
+        fallback_origin: form.fallback_origin.value,
+      };
       if (form.token.value) bodyData.token = form.token.value;
       try {
         const r = await api('/cloudflare/saas', { method: 'PATCH', body: bodyData });
-        toast(r.note || 'Cloudflare for SaaS saved', r.note ? 'err' : 'ok');
+        toast(r.note || 'Cloudflare for SaaS saved', r.note ? '' : 'ok');
         pageCloudflare();
       } catch (err) { oops(err); }
     });
@@ -1595,8 +1607,8 @@
       const form = main.querySelector('#saasf');
       e.target.disabled = true;
       try {
-        const r = await api('/cloudflare/saas/test', { method: 'POST', body: { token: form.token.value, zone_id: form.zone_id.value } });
-        toast(`✓ Zone "${r.zone_name}" (${r.zone_status})`, 'ok');
+        const r = await api('/cloudflare/saas/test', { method: 'POST', body: { token: form.token.value, zone_id: form.zone_id.value, account_id: form.account_id.value } });
+        toast(`✓ Zone "${r.zone_name}" (${r.zone_status})${r.account_name ? ` · account "${r.account_name}"` : ''}`, 'ok');
       } catch (err) { oops(err); }
       finally { e.target.disabled = false; }
     });

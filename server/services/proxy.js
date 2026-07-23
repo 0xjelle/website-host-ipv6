@@ -11,6 +11,7 @@ const { db } = require('../db');
 const procman = require('./procman');
 const { normalizeV6 } = require('./ipam');
 const metrics = require('./metrics');
+const cloudflare = require('./cloudflare');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
@@ -158,6 +159,9 @@ function serveStatic(site, req, res) {
 }
 
 function proxyToApp(site, req, res) {
+  // Behind Cloudflare the immediate peer is a Cloudflare edge IP; recover the
+  // real visitor address + scheme so the site's app sees the true client.
+  const cf = cloudflare.clientInfo(req);
   const opts = {
     host: '127.0.0.1',
     port: site.app_port,
@@ -165,8 +169,8 @@ function proxyToApp(site, req, res) {
     method: req.method,
     headers: {
       ...req.headers,
-      'x-forwarded-for': req.socket.remoteAddress || '',
-      'x-forwarded-proto': 'http',
+      'x-forwarded-for': cf.ip,
+      'x-forwarded-proto': cf.proto,
       'x-forwarded-host': req.headers.host || '',
     },
   };
@@ -184,6 +188,7 @@ function proxyToApp(site, req, res) {
 }
 
 function handleRequest(req, res) {
+  cloudflare.clientInfo(req); // recover real client IP + tally Cloudflare vs. direct
   const match = matchSite(req);
   if (!isServable(match)) {
     if (isBareHost(req)) return siteIndexPage(res);
@@ -202,8 +207,10 @@ function handleUpgrade(req, socket) {
   const match = matchSite(req);
   if (!isServable(match) || match.site.type !== 'node') return socket.destroy();
   const site = match.site;
+  const cf = cloudflare.clientInfo(req);
   const upstream = http.request({
-    host: '127.0.0.1', port: site.app_port, path: req.url, method: req.method, headers: req.headers,
+    host: '127.0.0.1', port: site.app_port, path: req.url, method: req.method,
+    headers: { ...req.headers, 'x-forwarded-for': cf.ip, 'x-forwarded-proto': cf.proto, 'x-forwarded-host': req.headers.host || '' },
   });
   upstream.on('upgrade', (ur, upSocket, upHead) => {
     let head = `HTTP/1.1 101 Switching Protocols\r\n`;

@@ -331,6 +331,77 @@ to test against Let's Encrypt's staging (untrusted) endpoint first.
 > of the plain-HTTP proxy (`reverse_proxy localhost:8080`). The built-in ACME
 > is for when you want it self-contained.
 
+## DDoS protection with Cloudflare
+
+Cloudflare protects a **hostname**, not a server, and only when that hostname's
+**DNS is proxied through Cloudflare** (the "orange cloud"). Nothing is installed
+on the box — you flip the orange cloud on in Cloudflare's dashboard and every
+proxied record gets Cloudflare's always-on, unmetered L3/4 + HTTP DDoS
+protection. The key point for a multi-user platform: **you don't force users** —
+you proxy the domain they're *all* served under, and every account's free
+`<slug>.<host>` URL is protected at once, with zero action from users.
+
+There's a dedicated admin page at **Administration → Cloudflare** that shows the
+exact records to add, whether traffic is actually arriving through Cloudflare,
+and lets you refresh Cloudflare's IP list.
+
+**One-time setup (in your Cloudflare dashboard):**
+
+1. Make sure `PUBLIC_HOST` (and `SITE_BASE_DOMAIN`, if you set it) is a **real
+   domain** added to Cloudflare — Cloudflare can't proxy a bare IP or an
+   `.sslip.io` name.
+2. In **DNS → Records**, add both **Proxied (orange cloud)**:
+   - `A`/`AAAA` `@` (your host) → the server's public IPv4/IPv6;
+   - `A`/`AAAA` `*` (wildcard, e.g. `*.apps.example.com`) → the same IPs — this
+     is what protects every free `<slug>.<host>` link.
+3. **SSL/TLS → Overview → Full** (the edge proxy already serves HTTPS on
+   `PROXY_TLS_PORT`, so Cloudflare↔origin stays encrypted). Cloudflare's free
+   Universal SSL covers `example.com` + one wildcard level; a deeper wildcard
+   base needs Advanced Certificate Manager.
+
+**Real visitor IPs (automatic).** Behind Cloudflare the origin's peer is a
+Cloudflare edge IP. The edge proxy recovers each visitor's real address from the
+`CF-Connecting-IP` header and passes it to your Node apps as `X-Forwarded-For`
+(with the correct `X-Forwarded-Proto`), so logs, traffic charts and app-side
+client IPs stay accurate. This is **only** trusted when the connection genuinely
+comes from a Cloudflare IP range (bundled, refreshable from the dashboard), so a
+direct attacker can't spoof it. Toggle it in the dashboard or force it off with
+`TRUST_CLOUDFLARE=0`.
+
+**Not fronted by Cloudflare:** the dashboard/API, SFTP and WireGuard (non-HTTP
+or admin-only), and a site's **dedicated IPv6 hit directly** — pointing an
+`AAAA` straight at a site's own address bypasses Cloudflare, so for a domain you
+want protected, route it through the Cloudflare-proxied name instead.
+
+### Users' own custom domains (Cloudflare for SaaS)
+
+The wildcard above covers every account's *free* `<slug>.<host>` URL. For a
+user's **own** domain (e.g. their `shop.example.com`) — whose DNS *they*
+control — the platform uses **Cloudflare for SaaS** so it still routes through
+Cloudflare, exactly like Vercel/Netlify handle bring-your-own-domain:
+
+1. **Administration → Cloudflare → Cloudflare for SaaS.** Enter a Cloudflare
+   **API token** (Zone · *SSL and Certificates* · Edit), your **Zone ID**, and a
+   **fallback origin** — a *proxied* record in your zone that points at this
+   server (e.g. `customers.example.com`). Hit **Save** (the platform registers
+   the fallback origin with Cloudflare) and **Test** to confirm the token/zone.
+2. When a user adds a real custom domain to their site, the platform calls the
+   Cloudflare API to create a **custom hostname** and, in the site's
+   **Settings → Custom domain routing** panel, shows the user the exact DNS
+   records to add — a **CNAME** from their domain to your fallback origin, plus
+   any DCV/ownership `TXT` records Cloudflare asks for.
+3. Because the CNAME target is Cloudflare-proxied, the user's traffic goes
+   through Cloudflare by construction — Cloudflare issues the certificate and
+   filters DDoS, then forwards `Host: shop.example.com` to this server, where the
+   edge proxy routes it to the right site. Status flips to **active** in the
+   panel once the cert issues (polled automatically).
+
+> Cloudflare for SaaS has its own pricing (roughly the first ~100 custom
+> hostnames free, then a small per-hostname monthly fee — check Cloudflare's
+> current pricing). Apex domains (`example.com` with no `www`) can't take a plain
+> CNAME; the user needs their DNS provider's CNAME-flattening/ALIAS, or points at
+> Cloudflare's anycast IPs. The API token is stored encrypted (AES-256-GCM).
+
 ## Stack
 
 Node.js + Express 5, SQLite (better-sqlite3), vanilla-JS SPA (no build step),

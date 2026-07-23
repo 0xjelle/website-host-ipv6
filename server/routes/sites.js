@@ -10,6 +10,7 @@ const deployer = require('../services/deployer');
 const procman = require('../services/procman');
 const ipam = require('../services/ipam');
 const gh = require('../services/github');
+const cfsaas = require('../services/cfsaas');
 const { decrypt } = require('../crypto');
 
 const repoFullName = (url) => {
@@ -100,6 +101,8 @@ router.post('/', (req, res) => {
   ipam.assignToSite(r.lastInsertRowid); // dedicated IPv6 from the pool, if configured
   const site = db.prepare('SELECT * FROM sites WHERE id = ?').get(r.lastInsertRowid);
   logActivity(req.user.id, 'site.create', `"${site.name}" (${site.type})`);
+  // Register any custom domains with Cloudflare for SaaS (best-effort/async).
+  cfsaas.syncDomainsForSite(site).catch(() => {});
   if (site.repo_url) {
     deployer.deploy(site.id, 'manual');
   } else {
@@ -145,7 +148,7 @@ router.get('/:id', (req, res) => {
   res.json({ site: publicView(site), deployments });
 });
 
-router.patch('/:id', (req, res) => {
+router.patch('/:id', async (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;
   const b = req.body || {};
@@ -168,7 +171,13 @@ router.patch('/:id', (req, res) => {
   const sets = Object.keys(fields).map(k => `${k} = ?`).join(', ');
   db.prepare(`UPDATE sites SET ${sets} WHERE id = ?`).run(...Object.values(fields), site.id);
   logActivity(req.user.id, 'site.update', `"${site.name}"`);
-  res.json({ site: publicView(db.prepare('SELECT * FROM sites WHERE id = ?').get(site.id)) });
+  const updated = db.prepare('SELECT * FROM sites WHERE id = ?').get(site.id);
+  // When the custom-domain list changed, reconcile it with Cloudflare for SaaS.
+  let cf = null;
+  if (fields.domains !== undefined && cfsaas.isEnabled()) {
+    cf = await cfsaas.syncDomainsForSite(updated).catch(e => ({ enabled: true, error: e.message, hostnames: [] }));
+  }
+  res.json({ site: publicView(updated), cf });
 });
 
 router.post('/:id/deploy', async (req, res) => {
@@ -217,6 +226,28 @@ router.get('/:id/health', async (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;
   res.json(await require('../services/health').checkHealth(site));
+});
+
+// ── Cloudflare for SaaS: per-site custom-domain routing status ──────
+router.get('/:id/domains/cf', (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  res.json({
+    enabled: cfsaas.isEnabled(),
+    fallback_origin: cfsaas.getConfig().fallbackOrigin,
+    hostnames: cfsaas.rowsForSite(site.id).map(cfsaas.view),
+  });
+});
+
+// Force a re-sync (register missing hostnames, refresh their status).
+router.post('/:id/domains/cf/sync', async (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  if (!cfsaas.isEnabled()) return res.status(400).json({ error: 'Cloudflare for SaaS is not configured' });
+  try {
+    await cfsaas.refreshStatuses();
+    res.json(await cfsaas.syncDomainsForSite(site));
+  } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
 // ── SSL (Let's Encrypt, DNS-01) ─────────────────────────────────────
@@ -349,10 +380,14 @@ router.delete('/:id/files', async (req, res) => {
 router.delete('/:id', (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;
+  // Capture Cloudflare hostname ids before the row cascade-deletes, then remove
+  // them from Cloudflare afterwards (best-effort/async).
+  const cfIds = cfsaas.cfIdsForSite(site.id);
   procman.stop(site.id);
   if (site.ipv6_addr) ipam.removeAddr(site.ipv6_addr);
   db.prepare('DELETE FROM sites WHERE id = ?').run(site.id);
   require('fs').rmSync(require('path').join(config.sitesDir, String(site.id)), { recursive: true, force: true });
+  cfsaas.deleteIds(cfIds).catch(() => {});
   logActivity(req.user.id, 'site.delete', `"${site.name}"`);
   res.json({ ok: true });
 });

@@ -277,6 +277,7 @@
         ${me.role === 'admin' ? `
           <div class="side-label">Administration</div>
           ${nav('admin/users', '👥', 'Users')}
+          ${nav('admin/cloudflare', '☁', 'Cloudflare')}
           ${nav('admin/system', '⚙', 'System')}
           ${nav('admin/activity', '≡', 'Activity log')}` : ''}
         <a class="nav-item" href="/status" target="_blank"><span class="ico">◉</span>Status page</a>
@@ -989,6 +990,45 @@
         try { await api(`/sites/${id}`, { method: 'PATCH', body: bodyData }); toast('Settings saved — redeploy to apply', 'ok'); pageSiteDetail(id, 'settings'); }
         catch (err) { oops(err); }
       });
+
+      // ── Cloudflare-for-SaaS routing for this site's custom domains ──
+      const cfCard = h(`<div class="card"><h2>Custom domain routing <span class="hint">Cloudflare</span></h2><div id="cfbody" class="empty">Loading…</div></div>`);
+      body.appendChild(cfCard);
+      const renderCf = (d) => {
+        const box = cfCard.querySelector('#cfbody');
+        if (!d.enabled) {
+          box.innerHTML = `Cloudflare for SaaS isn't enabled on this platform. Custom domains still work by pointing an A/AAAA record at this server — ask an admin to enable Cloudflare for SaaS (Administration → Cloudflare) to route them through Cloudflare automatically.`;
+          return;
+        }
+        if (!d.hostnames.length) {
+          box.innerHTML = `Add a real custom domain above and save — it'll be registered with Cloudflare and the exact DNS records to add will appear here.`;
+          return;
+        }
+        box.classList.remove('empty');
+        box.innerHTML = d.hostnames.map(hn => {
+          const v = hn.verification || {};
+          const recs = [{ t: 'CNAME', name: hn.hostname, value: hn.cname_target || d.fallback_origin || '(admin must set a fallback origin)' }];
+          if (v.ownership) recs.push({ t: (v.ownership.type || 'txt').toUpperCase(), name: v.ownership.name, value: v.ownership.value });
+          (v.ssl_records || []).forEach(r => recs.push({ t: (r.type || 'txt').toUpperCase(), name: r.name, value: r.value }));
+          const pill = hn.active
+            ? '<span class="pill live"><span class="dot"></span>active — protected by Cloudflare</span>'
+            : (hn.last_error ? '<span class="pill failed">error</span>' : `<span class="pill queued"><span class="dot"></span>${esc(hn.status || 'pending')}${hn.ssl_status ? ` · ssl ${esc(hn.ssl_status)}` : ''}</span>`);
+          return `<div style="margin-bottom:1.1rem">
+            <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.4rem"><b class="mono">${esc(hn.hostname)}</b> ${pill}</div>
+            ${hn.last_error ? `<div style="color:var(--bad);font-size:.85rem;margin-bottom:.4rem">${esc(hn.last_error)}</div>` : ''}
+            ${hn.active ? '' : `<div style="color:var(--ink-2);font-size:.85rem;margin-bottom:.4rem">Add these records at your domain's DNS provider, then it goes live automatically:</div>
+            <div class="tbl-scroll"><table class="tbl"><tr><th>Type</th><th>Name</th><th>Value</th></tr>
+            ${recs.map(r => `<tr><td>${esc(r.t)}</td><td class="mono">${esc(r.name)}</td><td class="mono">${esc(r.value)}</td></tr>`).join('')}
+            </table></div>`}
+          </div>`;
+        }).join('') + `<button class="btn small" id="cfsync">↻ Refresh status</button>`;
+        cfCard.querySelector('#cfsync')?.addEventListener('click', async (e) => {
+          e.target.disabled = true;
+          try { renderCf(await api(`/sites/${id}/domains/cf/sync`, { method: 'POST' })); }
+          catch (err) { oops(err); e.target.disabled = false; }
+        });
+      };
+      api(`/sites/${id}/domains/cf`).then(renderCf).catch(() => { cfCard.querySelector('#cfbody').textContent = 'Could not load Cloudflare routing status.'; });
     }
   }
 
@@ -1376,6 +1416,160 @@
     shell('admin/activity', c);
   }
 
+  // ── admin: cloudflare (DDoS protection) ─────────────────────────
+  async function pageCloudflare() {
+    const st = await api('/cloudflare');
+    const wildcard = `*.${st.site_base_domain}`;
+    const tlsSuffix = st.tls_port === 443 ? '' : `:${st.tls_port}`;
+    const seenVia = st.seen.via_cloudflare;
+    const lastVia = st.seen.last_via_at ? new Date(st.seen.last_via_at).toLocaleString() : null;
+    const liveBadge = seenVia > 0
+      ? `<span class="pill live"><span class="dot"></span>active — ${seenVia.toLocaleString()} request${seenVia === 1 ? '' : 's'} via Cloudflare</span>`
+      : `<span class="pill queued"><span class="dot"></span>no Cloudflare traffic seen yet</span>`;
+
+    const saas = await api('/cloudflare/saas').catch(() => ({}));
+    const saasRows = (saas.hostnames || []).map(hn => {
+      const pill = hn.active
+        ? '<span class="pill live"><span class="dot"></span>active</span>'
+        : (hn.last_error ? '<span class="pill failed">error</span>' : `<span class="pill queued"><span class="dot"></span>${esc(hn.status || 'pending')}</span>`);
+      return `<tr><td class="mono">${esc(hn.hostname)}</td><td>${esc(hn.site_name || '')}</td><td>${pill}</td><td class="mono">${esc(hn.cname_target || '—')}</td></tr>`;
+    }).join('');
+    const saasHtml = `
+      <div class="card">
+        <h2>Cloudflare for SaaS <span class="hint">route users' own custom domains through Cloudflare</span></h2>
+        <p style="color:var(--ink-2);font-size:.9rem;margin:.2rem 0 1rem">
+          When a user adds their <b>own</b> domain to a site, the platform registers it as a Cloudflare
+          <b>custom hostname</b> under your zone and shows them a single <b>CNAME</b> to add. Cloudflare then
+          issues the certificate and filters DDoS for it. Needs a Cloudflare API token with
+          <b>SSL and Certificates → Edit</b> on the zone, and a <b>fallback origin</b> (a proxied record in
+          your zone pointing at this server).</p>
+        <form id="saasf">
+          <label class="field" style="display:flex;align-items:center;gap:.5rem">
+            <input type="checkbox" name="enabled" style="width:auto" ${saas.enabled ? 'checked' : ''}>
+            <span class="lbl" style="margin:0">Enable Cloudflare for SaaS for custom domains</span></label>
+          <div class="formrow">
+            <label class="field"><span class="lbl">Zone ID</span>
+              <input type="text" name="zone_id" value="${esc(saas.zone_id || '')}" placeholder="32-char zone id">
+              <span class="help">Your zone's Overview page → API → Zone ID.</span></label>
+            <label class="field"><span class="lbl">Fallback origin</span>
+              <input type="text" name="fallback_origin" value="${esc(saas.fallback_origin || '')}" placeholder="customers.${esc(st.public_host)}">
+              <span class="help">A <b>proxied</b> A/AAAA record in your zone pointing at this server. Custom hostnames route here.</span></label>
+          </div>
+          <label class="field"><span class="lbl">API token ${saas.has_token ? '<span style="color:var(--good)">✓ stored — leave blank to keep</span>' : ''}</span>
+            <input type="password" name="token" placeholder="${saas.has_token ? '•••••••• stored (type to replace)' : 'Cloudflare API token'}">
+            <span class="help">Stored encrypted. Scope: Zone · SSL and Certificates · Edit for your zone.</span></label>
+          <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+            <button type="button" class="btn" id="saastest">Test token &amp; zone</button>
+            <button type="submit" class="btn primary">Save</button>
+          </div>
+        </form>
+        ${(saas.hostnames && saas.hostnames.length) ? `<div class="tbl-scroll" style="margin-top:1rem"><table class="tbl">
+          <tr><th>Custom domain</th><th>Site</th><th>Status</th><th>CNAME target</th></tr>${saasRows}</table></div>`
+          : `<div class="empty" style="margin-top:1rem">No custom domains registered yet. When a user adds a real domain to a site, it appears here.</div>`}
+      </div>`;
+
+    const c = h(`
+      <div>
+        <div class="page-head"><h1>Cloudflare — DDoS protection</h1>
+          <div class="sub">Put this platform's domain and its free per-site subdomains behind Cloudflare. Once the DNS is proxied, Cloudflare's always-on DDoS protection shields <b>every</b> site automatically — users do nothing.</div></div>
+
+        ${!st.host_is_real_domain ? `<div class="card" style="border-color:#5a3a12">
+          <h2 style="color:var(--warn)">⚠ A real domain is required</h2>
+          <p style="color:var(--ink-2);margin:.2rem 0 0">
+            <code class="code">PUBLIC_HOST</code> is currently <b>${esc(st.public_host)}</b>. Cloudflare can only
+            proxy a real domain name — it can't sit in front of a bare IP address or an
+            <code class="code">.sslip.io</code> hostname. Point <code class="code">PUBLIC_HOST</code>
+            (and optionally <code class="code">SITE_BASE_DOMAIN</code>) at a domain you've added to
+            Cloudflare, restart, then follow the steps below.</p>
+        </div>` : ''}
+
+        <div class="card">
+          <h2>Status ${liveBadge}</h2>
+          <div class="kv">
+            <span class="k">Platform domain</span><span class="v">${esc(st.public_host)} ${st.host_is_real_domain ? '<span style="color:var(--good)">✓ real domain</span>' : '<span style="color:var(--warn)">not a real domain</span>'}</span>
+            <span class="k">Free subdomains</span><span class="v"><code class="code">${esc(wildcard)}</code></span>
+            <span class="k">Trust Cloudflare headers</span><span class="v">
+              <label style="display:inline-flex;align-items:center;gap:.5rem;cursor:pointer">
+                <input type="checkbox" id="cftrust" style="width:auto" ${st.trust ? 'checked' : ''} ${st.env_forced_off ? 'disabled' : ''}>
+                <span>${st.trust ? 'On — real visitor IP recovered from CF-Connecting-IP' : 'Off — using the direct socket address'}</span>
+              </label>
+              ${st.env_forced_off ? '<span class="help">Forced off by <code class="code">TRUST_CLOUDFLARE=0</code>.</span>' : '<span class="help">Only honored when the connection actually comes from a Cloudflare IP, so it cannot be spoofed. Safe to leave on.</span>'}
+            </span>
+            <span class="k">Cloudflare IP ranges</span><span class="v">${st.count} ranges · source: ${esc(st.source)}${st.fetched_at ? ` · refreshed ${new Date(st.fetched_at).toLocaleDateString()}` : ''}
+              <button class="btn small" id="cfrefresh" style="margin-left:.5rem">↻ Refresh from Cloudflare</button></span>
+            <span class="k">Requests seen</span><span class="v">${seenVia.toLocaleString()} via Cloudflare · ${st.seen.direct.toLocaleString()} direct${lastVia ? ` · last via CF ${esc(lastVia)}` : ''}</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Set it up (once, in your Cloudflare dashboard)</h2>
+          <ol style="color:var(--ink-2);font-size:.92rem;line-height:1.9;margin:0;padding-left:1.2rem">
+            <li><b>DNS records — proxied.</b> In Cloudflare → <i>DNS → Records</i> for <b>${esc(st.public_host)}</b>, make sure these exist with <b>Proxy status: Proxied (orange cloud)</b>:
+              <ul style="margin:.3rem 0;padding-left:1.1rem">
+                <li><code class="code">A</code> / <code class="code">AAAA</code> &nbsp;<b>${esc(st.public_host)}</b> → your server's public IPv4 / IPv6</li>
+                <li><code class="code">A</code> / <code class="code">AAAA</code> &nbsp;<b>${esc(wildcard)}</b> → the same server IPs &nbsp;<span style="color:var(--ink-3)">(this is what protects every free <code class="code">&lt;site&gt;.${esc(st.site_base_domain)}</code> link)</span></li>
+              </ul>
+              The orange cloud is the whole thing — a proxied record automatically gets Cloudflare's unmetered L3/4 + HTTP DDoS protection. A grey cloud (DNS-only) does <b>not</b>.</li>
+            <li><b>SSL/TLS mode = Full.</b> Cloudflare → <i>SSL/TLS → Overview</i> → <b>Full</b>. This server already answers HTTPS on port ${st.tls_port} (its Let's Encrypt / default cert), so Cloudflare↔origin stays encrypted. <span style="color:var(--ink-3)">(Avoid "Flexible" — it leaves the origin leg unencrypted.)</span></li>
+            <li><b>Wildcard certificate.</b> Cloudflare's free Universal SSL covers <code class="code">${esc(st.site_base_domain)}</code> and one level of wildcard (<code class="code">${esc(wildcard)}</code>). If your free-subdomain base is deeper than one label, enable <i>Advanced Certificate Manager</i> for the wildcard.</li>
+            <li><b>That's it.</b> Reload a site over <code class="code">https://&lt;site&gt;.${esc(st.site_base_domain)}${esc(tlsSuffix)}</code>. When traffic starts arriving through Cloudflare the <b>Status</b> badge above flips to <span style="color:var(--good)">active</span>. Optionally turn on <i>Security → Bots → Bot Fight Mode</i> and add a rate-limiting rule.</li>
+          </ol>
+        </div>
+
+        <div class="card">
+          <h2>What this does &amp; doesn't cover</h2>
+          <p style="color:var(--ink-2);font-size:.9rem;margin:.2rem 0 .6rem">
+            Cloudflare proxies <b>HTTP/HTTPS websites</b> on the standard ports, so it protects the public sites served by the edge proxy. It does <b>not</b> front:</p>
+          <ul style="color:var(--ink-2);font-size:.9rem;line-height:1.8;margin:0;padding-left:1.2rem">
+            <li>the <b>dashboard/API</b> (port ${st.proxy_port === 80 ? '3000' : '3000'}), <b>SFTP</b>, and <b>WireGuard</b> — those are non-HTTP or admin-only; leave them off Cloudflare (or use a Cloudflare Tunnel separately).</li>
+            <li><b>a site's dedicated IPv6 hit directly</b> — pointing an <code class="code">AAAA</code> straight at a site's own address bypasses Cloudflare. For a domain you want protected, CNAME/point it at the Cloudflare-proxied name instead of the raw IPv6.</li>
+          </ul>
+          <p style="color:var(--ink-3);font-size:.85rem;margin:.6rem 0 0">Users' <i>own</i> custom domains are handled separately by <b>Cloudflare for SaaS</b> below — the platform registers each one and hands the user a single CNAME so their domain routes through Cloudflare too.</p>
+        </div>
+
+        ${saasHtml}
+      </div>`);
+
+    const main = shell('admin/cloudflare', c);
+
+    main.querySelector('#cftrust')?.addEventListener('change', async (e) => {
+      try {
+        await api('/cloudflare', { method: 'PATCH', body: { trust: e.target.checked } });
+        toast(`Cloudflare header trust ${e.target.checked ? 'enabled' : 'disabled'}`, 'ok');
+        pageCloudflare();
+      } catch (err) { oops(err); e.target.checked = !e.target.checked; }
+    });
+    main.querySelector('#cfrefresh')?.addEventListener('click', async (e) => {
+      e.target.disabled = true; e.target.textContent = '↻ Refreshing…';
+      try {
+        const r = await api('/cloudflare/refresh', { method: 'POST' });
+        toast(`Ranges refreshed — ${r.v4count} IPv4 · ${r.v6count} IPv6`, 'ok');
+        pageCloudflare();
+      } catch (err) { oops(err); e.target.disabled = false; e.target.textContent = '↻ Refresh from Cloudflare'; }
+    });
+
+    main.querySelector('#saasf')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const bodyData = { enabled: form.enabled.checked, zone_id: form.zone_id.value, fallback_origin: form.fallback_origin.value };
+      if (form.token.value) bodyData.token = form.token.value;
+      try {
+        const r = await api('/cloudflare/saas', { method: 'PATCH', body: bodyData });
+        toast(r.note || 'Cloudflare for SaaS saved', r.note ? 'err' : 'ok');
+        pageCloudflare();
+      } catch (err) { oops(err); }
+    });
+    main.querySelector('#saastest')?.addEventListener('click', async (e) => {
+      const form = main.querySelector('#saasf');
+      e.target.disabled = true;
+      try {
+        const r = await api('/cloudflare/saas/test', { method: 'POST', body: { token: form.token.value, zone_id: form.zone_id.value } });
+        toast(`✓ Zone "${r.zone_name}" (${r.zone_status})`, 'ok');
+      } catch (err) { oops(err); }
+      finally { e.target.disabled = false; }
+    });
+  }
+
   // ── router ──────────────────────────────────────────────────────
   async function render() {
     if (!me) {
@@ -1394,6 +1588,7 @@
       else if (route === 'certs') await pageCerts();
       else if (route === 'network') await pageNetwork();
       else if (route === 'admin/users' && me.role === 'admin') await pageUsers();
+      else if (route === 'admin/cloudflare' && me.role === 'admin') await pageCloudflare();
       else if (route === 'admin/system' && me.role === 'admin') await pageSystem();
       else if (route === 'admin/activity' && me.role === 'admin') await pageActivity();
       else { location.hash = '#/overview'; }

@@ -19,6 +19,7 @@ app.use('/api/sites', require('./routes/sites'));
 app.use('/api/wireguard', require('./routes/wireguard'));
 app.use('/api/github', require('./routes/github'));
 app.use('/api/certs', require('./routes/certs'));
+app.use('/api/cloudflare', require('./routes/cloudflare'));
 app.use('/api/status', require('./routes/status')); // public — no auth
 app.use('/api', require('./routes/admin'));
 
@@ -47,6 +48,8 @@ require('./services/metrics').start();    // system + traffic sampling for chart
 require('./services/sftp').start();       // built-in SFTP server for file uploads
 require('./services/poller').start();     // poll GitHub for pushes (auto-deploy behind NAT)
 require('./services/acme').startRenewals(); // stage SSL renewals before expiry
+require('./services/cloudflare').start();   // load Cloudflare edge IP ranges (real client IP behind CF)
+require('./services/cfsaas').start();       // poll Cloudflare-for-SaaS custom hostname statuses
 
 // Resume node apps that were running before the restart (reaping any process
 // groups a previous platform run left behind so ports are free). Stopped apps

@@ -95,6 +95,32 @@ CREATE TABLE IF NOT EXISTS activity (
   detail     TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Generic key/value store for small platform-wide settings that don't warrant
+-- their own table (e.g. the Cloudflare "trust proxy" flag, Cloudflare-for-SaaS
+-- config: cf_saas_enabled, cf_zone_id, cf_fallback_origin, cf_api_token[enc]).
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT
+);
+
+-- Cloudflare-for-SaaS custom hostnames: one row per (site, custom domain) that
+-- has been registered with Cloudflare so a user's own domain routes through
+-- Cloudflare. cf_id is null if the create call failed (retried on next sync).
+CREATE TABLE IF NOT EXISTS cf_hostnames (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  site_id      INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  hostname     TEXT NOT NULL,
+  cf_id        TEXT,                 -- Cloudflare custom_hostname id
+  status       TEXT,                 -- hostname status (pending/active/...)
+  ssl_status   TEXT,                 -- ssl.status
+  verification TEXT,                 -- JSON: CNAME target + DCV/ownership records
+  cname_target TEXT,                 -- fallback origin the user CNAMEs to
+  last_error   TEXT,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(site_id, hostname)
+);
 `);
 
 // Lightweight migrations for columns added after the initial release
@@ -119,4 +145,14 @@ function logActivity(userId, action, detail = '') {
     .run(userId, action, detail);
 }
 
-module.exports = { db, logActivity };
+function getSetting(key, def = null) {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+  return row ? row.value : def;
+}
+
+function setSetting(key, value) {
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run(key, value == null ? null : String(value));
+}
+
+module.exports = { db, logActivity, getSetting, setSetting };

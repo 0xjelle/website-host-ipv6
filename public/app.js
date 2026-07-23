@@ -66,6 +66,46 @@
     return back;
   }
 
+  // ── Cloudflare-for-SaaS custom-domain DNS records ───────────────
+  // Shared by the site-settings routing card and the post-create setup screen
+  // so both render the exact same CNAME + TXT records and status pill.
+  function cfRecordRows(hn, fallbackOrigin) {
+    const v = hn.verification || {};
+    const recs = [{ t: 'CNAME', name: hn.hostname, value: hn.cname_target || fallbackOrigin || '(admin must set a fallback origin)' }];
+    if (v.ownership) recs.push({ t: (v.ownership.type || 'txt').toUpperCase(), name: v.ownership.name, value: v.ownership.value });
+    (v.ssl_records || []).forEach(r => recs.push({ t: (r.type || 'txt').toUpperCase(), name: r.name, value: r.value }));
+    return recs;
+  }
+  function cfRecordsTable(recs) {
+    return `<div class="tbl-scroll"><table class="tbl"><tr><th>Type</th><th>Name</th><th>Value</th></tr>
+      ${recs.map(r => `<tr><td>${esc(r.t)}</td><td class="mono">${esc(r.name)}</td><td class="mono">${esc(r.value)}</td></tr>`).join('')}
+      </table></div>`;
+  }
+  function cfStatusPill(hn) {
+    return hn.active
+      ? '<span class="pill live"><span class="dot"></span>active — protected by Cloudflare</span>'
+      : (hn.last_error ? '<span class="pill failed">error</span>' : `<span class="pill queued"><span class="dot"></span>${esc(hn.status || 'pending')}${hn.ssl_status ? ` · ssl ${esc(hn.ssl_status)}` : ''}</span>`);
+  }
+
+  // Shown right after a site with a custom domain is created, so the user gets
+  // the DNS records to add without hunting through Settings. `cf` is the create
+  // response's Cloudflare result: { enabled, hostnames:[...], fallback_origin? }.
+  function domainSetupModal(site, cf) {
+    const rows = (cf.hostnames || []).map(hn => `
+      <div style="margin-bottom:1.1rem">
+        <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.4rem"><b class="mono">${esc(hn.hostname)}</b> ${cfStatusPill(hn)}</div>
+        ${hn.last_error ? `<div style="color:var(--bad);font-size:.85rem;margin-bottom:.4rem">${esc(hn.last_error)}</div>` : ''}
+        ${hn.active ? '' : cfRecordsTable(cfRecordRows(hn, cf.fallback_origin))}
+      </div>`).join('');
+    const m = modal(`
+      <h2>Almost there — point your domain</h2>
+      <p style="color:var(--ink-2);font-size:.9rem;margin:.2rem 0 1rem">Add these DNS records at your domain's provider. Your site goes live behind Cloudflare — with its certificate and DDoS protection — automatically once the records are detected. You don't have to wait here; the same status is on the site's Settings.</p>
+      ${rows}
+      <div class="actions"><button type="button" class="btn primary" id="godone">Got it — go to site</button></div>`);
+    m.querySelector('#godone').addEventListener('click', () => { m.remove(); location.hash = `#/sites/${site.id}`; });
+    return m;
+  }
+
   // ── charts (SVG, no deps) ───────────────────────────────────────
   const fmtTime = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   // validated categorical palette (dark surface) — dataviz skill, fixed order
@@ -558,12 +598,15 @@
       try {
         const body = { ...fd, domains: fd.domain ? [fd.domain] : [] };
         delete body.domain;
-        const { site, webhook } = await api('/sites', { method: 'POST', body });
+        const { site, webhook, cf } = await api('/sites', { method: 'POST', body });
         m.remove();
         toast(`Site "${site.name}" created${site.repo_url ? ' — first deploy started' : ''}`, 'ok');
         if (webhook?.created) toast('GitHub webhook created automatically 🎉', 'ok');
         else if (site.repo_url && webhook && webhook.reason && !/already/.test(webhook.reason)) toast(`Webhook not auto-created: ${webhook.reason}`, '');
-        location.hash = `#/sites/${site.id}`;
+        // If a custom domain was registered with Cloudflare, show the DNS records
+        // to add right away; otherwise go straight to the new site.
+        if (cf && cf.enabled && cf.hostnames && cf.hostnames.length) domainSetupModal(site, cf);
+        else location.hash = `#/sites/${site.id}`;
       } catch (err) { oops(err); }
     });
   }
@@ -1005,23 +1048,12 @@
           return;
         }
         box.classList.remove('empty');
-        box.innerHTML = d.hostnames.map(hn => {
-          const v = hn.verification || {};
-          const recs = [{ t: 'CNAME', name: hn.hostname, value: hn.cname_target || d.fallback_origin || '(admin must set a fallback origin)' }];
-          if (v.ownership) recs.push({ t: (v.ownership.type || 'txt').toUpperCase(), name: v.ownership.name, value: v.ownership.value });
-          (v.ssl_records || []).forEach(r => recs.push({ t: (r.type || 'txt').toUpperCase(), name: r.name, value: r.value }));
-          const pill = hn.active
-            ? '<span class="pill live"><span class="dot"></span>active — protected by Cloudflare</span>'
-            : (hn.last_error ? '<span class="pill failed">error</span>' : `<span class="pill queued"><span class="dot"></span>${esc(hn.status || 'pending')}${hn.ssl_status ? ` · ssl ${esc(hn.ssl_status)}` : ''}</span>`);
-          return `<div style="margin-bottom:1.1rem">
-            <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.4rem"><b class="mono">${esc(hn.hostname)}</b> ${pill}</div>
+        box.innerHTML = d.hostnames.map(hn => `<div style="margin-bottom:1.1rem">
+            <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.4rem"><b class="mono">${esc(hn.hostname)}</b> ${cfStatusPill(hn)}</div>
             ${hn.last_error ? `<div style="color:var(--bad);font-size:.85rem;margin-bottom:.4rem">${esc(hn.last_error)}</div>` : ''}
             ${hn.active ? '' : `<div style="color:var(--ink-2);font-size:.85rem;margin-bottom:.4rem">Add these records at your domain's DNS provider, then it goes live automatically:</div>
-            <div class="tbl-scroll"><table class="tbl"><tr><th>Type</th><th>Name</th><th>Value</th></tr>
-            ${recs.map(r => `<tr><td>${esc(r.t)}</td><td class="mono">${esc(r.name)}</td><td class="mono">${esc(r.value)}</td></tr>`).join('')}
-            </table></div>`}
-          </div>`;
-        }).join('') + `<button class="btn small" id="cfsync">↻ Refresh status</button>`;
+            ${cfRecordsTable(cfRecordRows(hn, d.fallback_origin))}`}
+          </div>`).join('') + `<button class="btn small" id="cfsync">↻ Refresh status</button>`;
         cfCard.querySelector('#cfsync')?.addEventListener('click', async (e) => {
           e.target.disabled = true;
           try { renderCf(await api(`/sites/${id}/domains/cf/sync`, { method: 'POST' })); }

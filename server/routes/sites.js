@@ -71,7 +71,7 @@ router.get('/', (req, res) => {
   res.json({ sites: rows.map(publicView) });
 });
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { name, type, repo_url, repo_branch, repo_token, domains, static_dir, build_cmd, start_cmd, env_vars } = req.body || {};
   if (!name?.trim()) return res.status(400).json({ error: 'Site name is required' });
   if (type && !['static', 'node'].includes(type)) return res.status(400).json({ error: 'Type must be static or node' });
@@ -101,8 +101,13 @@ router.post('/', (req, res) => {
   ipam.assignToSite(r.lastInsertRowid); // dedicated IPv6 from the pool, if configured
   const site = db.prepare('SELECT * FROM sites WHERE id = ?').get(r.lastInsertRowid);
   logActivity(req.user.id, 'site.create', `"${site.name}" (${site.type})`);
-  // Register any custom domains with Cloudflare for SaaS (best-effort/async).
-  cfsaas.syncDomainsForSite(site).catch(() => {});
+  // Register any custom domains with Cloudflare for SaaS, and return the result
+  // so the UI can show the DNS records to add right after creation. Best-effort:
+  // a Cloudflare failure never blocks site creation (it's retried on next sync).
+  // This resolves instantly when SaaS is disabled or no real domain was given.
+  let cf = null;
+  try { cf = await cfsaas.syncDomainsForSite(site); }
+  catch (e) { cf = { enabled: cfsaas.isEnabled(), error: e.message, hostnames: [] }; }
   if (site.repo_url) {
     deployer.deploy(site.id, 'manual');
   } else {
@@ -111,7 +116,7 @@ router.post('/', (req, res) => {
     if (site.type === 'static') db.prepare("UPDATE sites SET status = 'live' WHERE id = ?").run(site.id);
   }
 
-  const respond = (webhook) => res.status(201).json({ site: publicView(site), webhook });
+  const respond = (webhook) => res.status(201).json({ site: publicView(site), webhook, cf });
   if (site.repo_url && req.body.auto_webhook !== false) {
     autoWebhook(site, (webhook) => {
       if (webhook.created) logActivity(req.user.id, 'webhook.create', `"${site.name}"`);

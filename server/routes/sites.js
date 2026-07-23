@@ -78,6 +78,12 @@ router.post('/', async (req, res) => {
   if (repo_url && !/^https:\/\/[\w.-]+\/[\w.-]+\/[\w.-]+/.test(repo_url)) {
     return res.status(400).json({ error: 'Repository URL must be an https git URL (e.g. https://github.com/user/repo)' });
   }
+  // A custom domain is required for every site.
+  const cleanDomains = (Array.isArray(domains) ? domains : []).map(d => String(d || '').trim().toLowerCase()).filter(Boolean);
+  if (!cleanDomains.length) return res.status(400).json({ error: 'A custom domain is required' });
+  if (!cleanDomains.every(d => /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(d))) {
+    return res.status(400).json({ error: 'Enter a valid custom domain (e.g. www.example.com)' });
+  }
 
   let slug = slugify(name);
   if (!slug) slug = 'site';
@@ -91,7 +97,7 @@ router.post('/', async (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(
       req.user.id, name.trim(), slug, siteType,
-      JSON.stringify(Array.isArray(domains) ? domains.filter(Boolean) : []),
+      JSON.stringify(cleanDomains),
       repo_url || null, repo_branch?.trim() || 'main', repo_token || null,
       crypto.randomBytes(24).toString('hex'),
       static_dir?.trim() || '', build_cmd || null, start_cmd || null,

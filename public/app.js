@@ -106,6 +106,21 @@
     return m;
   }
 
+  // A prominent, top-of-page banner listing the CNAME record(s) still needed to
+  // bring a site's custom domain(s) live. `pending` = hostnames not yet active.
+  function cfBannerHtml(pending, fallbackOrigin) {
+    const rows = pending.map(hn => `
+      <div style="margin-top:.7rem">
+        <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.3rem"><b class="mono">${esc(hn.hostname)}</b> ${cfStatusPill(hn)}</div>
+        ${hn.last_error ? `<div style="color:var(--bad);font-size:.85rem;margin-bottom:.3rem">${esc(hn.last_error)}</div>` : ''}
+        ${cfRecordsTable(cfRecordRows(hn, fallbackOrigin))}
+      </div>`).join('');
+    return `<div class="card" style="border-color:#5a3a12;background:#1c1408">
+      <h2 style="color:var(--warn)">⚠ Add your DNS record to go live</h2>
+      <p style="color:var(--ink-2);font-size:.9rem;margin:.2rem 0 0">Your custom domain isn't active yet. Add the record${pending.length > 1 ? 's' : ''} below at your domain's DNS provider — <b>just the one CNAME, no TXT</b>. The site turns on automatically (certificate + Cloudflare DDoS) once it's detected.</p>
+      ${rows}</div>`;
+  }
+
   // ── charts (SVG, no deps) ───────────────────────────────────────
   const fmtTime = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   // validated categorical palette (dark surface) — dataviz skill, fixed order
@@ -557,8 +572,8 @@
             <input type="password" name="repo_token" placeholder="ghp_… (optional)"></label>
         </div>
         <div class="formrow">
-          <label class="field"><span class="lbl">Custom domain <span style="font-weight:400">(optional)</span></span>
-            <input type="text" name="domain" placeholder="www.example.com"></label>
+          <label class="field"><span class="lbl">Custom domain <span style="color:var(--warn)">(required)</span></span>
+            <input type="text" name="domain" placeholder="www.example.com" required></label>
           <label class="field"><span class="lbl">Serve subfolder / build output</span>
             <input type="text" name="static_dir" placeholder="dist (optional)"></label>
         </div>
@@ -675,6 +690,14 @@
     });
 
     const body = main.querySelector('#tabbody');
+
+    // Prominent CNAME banner at the top while any custom domain isn't live yet.
+    api(`/sites/${id}/domains/cf`).then(cf => {
+      if (!cf.enabled) return;
+      const pending = (cf.hostnames || []).filter(hn => !hn.active);
+      if (!pending.length) return;
+      main.querySelector('.page-head')?.insertAdjacentElement('afterend', h(cfBannerHtml(pending, cf.fallback_origin)));
+    }).catch(() => {});
 
     if (tab === 'deploys') {
       body.appendChild(h(`<div class="card"><h2>Traffic <span class="hint">requests/min · last hour</span></h2>

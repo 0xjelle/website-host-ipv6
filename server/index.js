@@ -11,6 +11,7 @@ app.disable('x-powered-by');
 
 // Webhooks need the raw body for signature verification — mount before json()
 app.use('/api/webhooks', require('./routes/webhooks'));
+app.post('/api/billing/webhook', express.raw({ type: '*/*' }), require('./routes/billing').webhook);
 
 app.use(express.json({ limit: '1mb' }));
 app.get('/api/health', (req, res) => res.json({ ok: true, name: 'Hosting', uptime: process.uptime() }));
@@ -20,6 +21,7 @@ app.use('/api/wireguard', require('./routes/wireguard'));
 app.use('/api/github', require('./routes/github'));
 app.use('/api/certs', require('./routes/certs'));
 app.use('/api/cloudflare', require('./routes/cloudflare'));
+app.use('/api/billing', require('./routes/billing').router);
 app.use('/api/status', require('./routes/status')); // public — no auth
 app.use('/api', require('./routes/admin'));
 

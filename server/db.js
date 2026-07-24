@@ -157,6 +157,11 @@ addColumn('users', 'github_login TEXT');   // GitHub username for display
 addColumn('users', 'totp_secret TEXT');                       // base32 TOTP secret (2FA)
 addColumn('users', 'totp_enabled INTEGER NOT NULL DEFAULT 0'); // 2FA active?
 addColumn('users', 'totp_backup TEXT');                       // JSON array of sha256(backup code)
+addColumn('users', "plan TEXT NOT NULL DEFAULT 'free'");      // billing plan key
+addColumn('users', 'ls_status TEXT');                         // Lemon Squeezy subscription status
+addColumn('users', 'ls_subscription_id TEXT');               // Lemon Squeezy subscription id
+addColumn('users', 'ls_customer_id TEXT');                   // Lemon Squeezy customer id (portal)
+addColumn('users', 'ls_renews_at TEXT');                     // next renewal timestamp
 addColumn('sites', 'not_found_html TEXT'); // optional custom 404 page (served by the edge proxy)
 addColumn('cf_hostnames', 'ssl_detail TEXT'); // issued-cert details (authority, validity) as JSON
 

@@ -64,8 +64,11 @@ function nextAppPort() {
   return p;
 }
 
-function publicView(site) {
+function publicView(site, isAdmin = false) {
   const { repo_token, not_found_html, ...rest } = site;
+  // Hide the dedicated origin IPv6 from regular users so they can't point AAAA
+  // records straight at the origin (bypassing Cloudflare). Admins still see it.
+  if (!isAdmin) delete rest.ipv6_addr;
   return {
     ...rest,
     has_repo_token: !!repo_token,
@@ -85,7 +88,7 @@ router.get('/', (req, res) => {
   const rows = req.user.role === 'admin' && req.query.all === '1'
     ? db.prepare('SELECT s.*, u.email AS owner_email FROM sites s JOIN users u ON u.id = s.user_id ORDER BY s.id DESC').all()
     : db.prepare('SELECT * FROM sites WHERE user_id = ? ORDER BY id DESC').all(req.user.id);
-  res.json({ sites: rows.map(publicView) });
+  res.json({ sites: rows.map(s => publicView(s, req.user.role === 'admin')) });
 });
 
 router.post('/', async (req, res) => {
@@ -139,7 +142,7 @@ router.post('/', async (req, res) => {
     if (site.type === 'static') db.prepare("UPDATE sites SET status = 'live' WHERE id = ?").run(site.id);
   }
 
-  const respond = (webhook) => res.status(201).json({ site: publicView(site), webhook, cf });
+  const respond = (webhook) => res.status(201).json({ site: publicView(site, req.user.role === 'admin'), webhook, cf });
   if (site.repo_url && req.body.auto_webhook !== false) {
     autoWebhook(site, (webhook) => {
       if (webhook.created) logActivity(req.user.id, 'webhook.create', `"${site.name}"`);
@@ -173,7 +176,7 @@ router.get('/:id', (req, res) => {
   const deployments = db.prepare(
     'SELECT id, trigger, commit_sha, commit_msg, status, started_at, finished_at FROM deployments WHERE site_id = ? ORDER BY id DESC LIMIT 20'
   ).all(site.id);
-  res.json({ site: publicView(site), deployments });
+  res.json({ site: publicView(site, req.user.role === 'admin'), deployments });
 });
 
 router.patch('/:id', async (req, res) => {
@@ -205,7 +208,7 @@ router.patch('/:id', async (req, res) => {
   if (fields.domains !== undefined && cfsaas.isEnabled()) {
     cf = await cfsaas.syncDomainsForSite(updated).catch(e => ({ enabled: true, error: e.message, hostnames: [] }));
   }
-  res.json({ site: publicView(updated), cf });
+  res.json({ site: publicView(updated, req.user.role === 'admin'), cf });
 });
 
 router.post('/:id/deploy', async (req, res) => {

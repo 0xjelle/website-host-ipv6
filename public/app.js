@@ -834,15 +834,8 @@
             <button class="btn small" id="checknow" style="margin-left:.4rem">Check now</button></div>
           <details style="margin-bottom:.6rem"><summary style="cursor:pointer;color:var(--ink-3);font-size:.85rem">Prefer instant webhooks? (needs a public server)</summary>
           <div style="padding-top:.8rem">
-          <p style="color:var(--ink-3);font-size:.82rem">If your server is reachable from GitHub, add a webhook for instant deploys.
-            <button class="btn small" id="mkhook">⚡ Create webhook automatically</button> (connected account), or add it by hand:</p>
-          <label class="field"><span class="lbl">Payload URL</span>
-            <div class="copybox"><code>${esc(site.webhook_url)}</code>
-              <button class="cp" onclick="_copy('${esc(site.webhook_url)}')">⧉</button></div></label>
-          <label class="field"><span class="lbl">Secret</span>
-            <div class="copybox"><code>${esc(site.webhook_secret)}</code>
-              <button class="cp" onclick="_copy('${esc(site.webhook_secret)}')">⧉</button></div>
-            <span class="help">Content type: <b>application/json</b> · Events: <b>Just the push event</b>.</span></label>
+          <p style="color:var(--ink-3);font-size:.82rem">If your server is reachable from GitHub, add a webhook for instant deploys — done for you with your connected account.</p>
+          <button class="btn small" id="mkhook">⚡ Create webhook automatically</button>
           </div></details>
           <label class="field" style="display:flex;align-items:center;gap:.5rem;margin-top:.4rem">
             <input type="checkbox" id="autodep" style="width:auto" ${site.auto_deploy ? 'checked' : ''}>

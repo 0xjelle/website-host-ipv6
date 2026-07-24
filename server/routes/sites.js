@@ -58,6 +58,34 @@ function ownSite(req, res) {
   return site;
 }
 
+// Delete a site directory without stalling the platform.
+//
+// fs.promises.rm looks non-blocking but runs on libuv's small (4 by default)
+// threadpool, and a site with a big node_modules is tens of thousands of
+// unlinks. That saturates the pool, so every other file read - including the
+// dashboard's own assets and API handlers - queues behind it and the whole UI
+// appears frozen for minutes.
+//
+// Instead: rename the directory out of the way (instant, same filesystem, frees
+// the path for reuse straight away) and let a detached `rm -rf` child process do
+// the slow work in the OS, where it costs us no threadpool time.
+function removeSiteDir(dir) {
+  const trash = `${dir}.deleted-${Date.now().toString(36)}`;
+  fs.promises.rename(dir, trash)
+    .then(() => {
+      const child = require('child_process').spawn('rm', ['-rf', trash], { detached: true, stdio: 'ignore' });
+      child.on('error', () => {  // no `rm` (non-Linux): fall back to Node
+        fs.promises.rm(trash, { recursive: true, force: true }).catch(() => {});
+      });
+      child.unref();
+    })
+    .catch((e) => {
+      if (e.code === 'ENOENT') return; // nothing there
+      fs.promises.rm(dir, { recursive: true, force: true })
+        .catch((err) => console.error(`site delete: could not remove ${dir}: ${err.message}`));
+    });
+}
+
 function nextAppPort() {
   const used = db.prepare('SELECT app_port FROM sites WHERE app_port IS NOT NULL').all().map(r => r.app_port);
   let p = config.appPortBase;
@@ -439,7 +467,13 @@ router.delete('/:id/files', async (req, res) => {
   const target = safePath(site, req.query.path);
   if (!target || target === siteRoot(site)) return res.status(400).json({ error: 'Invalid path' });
   try {
-    await fsp.rm(target, { recursive: true, force: true });
+    // Shell out for the same reason as removeSiteDir(): deleting a big folder
+    // (a node_modules the user uploaded) via the threadpool stalls other reads.
+    await new Promise((resolve, reject) => {
+      const child = require('child_process').spawn('rm', ['-rf', target], { stdio: 'ignore' });
+      child.on('error', () => fsp.rm(target, { recursive: true, force: true }).then(resolve, reject));
+      child.on('exit', () => resolve());
+    });
     logActivity(req.user.id, 'site.delete-file', `"${site.name}" ✕ ${req.query.path}`);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -461,9 +495,7 @@ router.delete('/:id', (req, res) => {
   // the background with async I/O so it never blocks the event loop / the
   // dashboard. (rmSync here used to freeze the whole server for minutes.)
   res.json({ ok: true });
-  const dir = path.join(config.sitesDir, String(site.id));
-  fs.promises.rm(dir, { recursive: true, force: true })
-    .catch((e) => console.error(`site delete: could not remove ${dir}: ${e.message}`));
+  removeSiteDir(path.join(config.sitesDir, String(site.id)));
   cfsaas.deleteIds(cfIds).catch(() => {});
   // Per-site billing: drop the subscription quantity to the new site count.
   if (billing.configured() && owner && owner.bill_item_id) {

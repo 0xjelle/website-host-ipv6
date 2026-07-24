@@ -12,6 +12,16 @@ const escHtml = (s) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&
 
 const running = new Set(); // site ids with an in-flight deploy
 
+// Recursive delete that does not occupy Node: `rm -rf` in a child process, with
+// a fs.promises fallback where `rm` isn't available.
+function rmrf(target) {
+  return new Promise((resolve) => {
+    const child = spawn('rm', ['-rf', target], { stdio: 'ignore' });
+    child.on('error', () => fs.promises.rm(target, { recursive: true, force: true }).then(resolve, () => resolve()));
+    child.on('exit', () => resolve());
+  });
+}
+
 function sh(cmd, args, opts, onOutput) {
   return new Promise((resolve) => {
     const child = spawn(cmd, args, { ...opts, env: { ...process.env, ...opts?.env } });
@@ -128,7 +138,10 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
         if (await sh('git', ['-C', workDir, 'reset', '--hard', `origin/${site.repo_branch}`], { env: gitEnv }, out)) return finish(false, 'git reset failed');
       } else {
         out(`── Cloning ${site.repo_url} (${site.repo_branch})\n`);
-        fs.rmSync(workDir, { recursive: true, force: true });
+        // Shell out rather than fs.rmSync: a synchronous recursive delete of a
+        // tree with node_modules blocks the event loop (freezing the dashboard
+        // for minutes). Awaiting a child process costs no event-loop time.
+        await rmrf(workDir);
         if (await sh('git', ['clone', '--depth', '1', '--branch', site.repo_branch, url, workDir], { env: gitEnv }, out)) {
           return finish(false, 'git clone failed - check the URL, branch and access token');
         }
@@ -172,7 +185,7 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
       // clean install/build for this fresh code on its next start.
       if (containerMode) {
         out('── Dependencies & build run inside the container\n');
-        try { fs.rmSync(path.join(workDir, 'node_modules'), { recursive: true, force: true }); } catch { /* ignore */ }
+        await rmrf(path.join(workDir, 'node_modules'));
       }
 
       // 4. Start / go live

@@ -261,12 +261,28 @@ router.get('/:id/health', async (req, res) => {
 router.get('/:id/domains/cf', async (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;
-  const fallbackOrigin = cfsaas.getConfig().fallbackOrigin;
-  const hostnames = cfsaas.rowsForSite(site.id).map(cfsaas.view);
-  // Add a live "is the CNAME actually in place?" check per hostname.
-  await Promise.all(hostnames.map(async (h) => {
-    h.cname_detected = await cnameDetected(h.hostname, fallbackOrigin).catch(() => false);
-  }));
+  // Bulletproof: always send a response. First reply with the DB-backed data
+  // (fast, can't hang), then the client has the CNAME/TXT records immediately;
+  // the optional live DNS "is the CNAME added?" check is layered on but capped
+  // so it can never leave the request unanswered.
+  console.log(`[domains/cf] site ${site.id}: enter`);
+  let fallbackOrigin = '';
+  let hostnames = [];
+  try {
+    fallbackOrigin = cfsaas.getConfig().fallbackOrigin;
+    hostnames = cfsaas.rowsForSite(site.id).map(cfsaas.view);
+  } catch (e) {
+    console.error(`[domains/cf] site ${site.id}: config/rows failed: ${e.message}`);
+  }
+  try {
+    await Promise.race([
+      Promise.allSettled(hostnames.map(async (h) => {
+        h.cname_detected = await cnameDetected(h.hostname, fallbackOrigin).catch(() => false);
+      })),
+      new Promise((r) => setTimeout(r, 8000)), // hard cap the whole DNS phase
+    ]);
+  } catch { /* ignore — respond with what we have */ }
+  console.log(`[domains/cf] site ${site.id}: responding (${hostnames.length} hostname(s))`);
   res.json({ enabled: cfsaas.isEnabled(), fallback_origin: fallbackOrigin, hostnames });
 });
 

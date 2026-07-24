@@ -17,7 +17,17 @@ if (fs.existsSync(envFile)) {
     if (!m) continue;
     let val = m[2].trim();
     const q = val[0];
-    if ((q === '"' || q === "'") && val.length > 1 && val[val.length - 1] === q) val = val.slice(1, -1);
+    if ((q === '"' || q === "'") && val.length > 1) {
+      // Quoted: take the quoted span, ignore anything after it (e.g. a comment).
+      const end = val.indexOf(q, 1);
+      val = end > 0 ? val.slice(1, end) : val.slice(1);
+    } else {
+      // Unquoted: a trailing "# ..." is a comment, not part of the value. Only
+      // strip when the # follows whitespace, so values containing a # (say a
+      // password like a#b) survive intact.
+      const c = val.search(/\s#/);
+      if (c >= 0) val = val.slice(0, c).trim();
+    }
     if (process.env[m[1]] === undefined) process.env[m[1]] = val;
   }
 }

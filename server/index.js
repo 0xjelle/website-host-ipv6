@@ -26,10 +26,17 @@ app.use('/api', require('./routes/admin'));
 // Public status page
 app.get('/status', (req, res) => res.sendFile(path.join(config.root, 'public', 'status.html')));
 
-// Dashboard SPA
-app.use(express.static(path.join(config.root, 'public')));
+// Dashboard SPA. Serve the HTML/JS with no-cache so a deploy is picked up
+// immediately — otherwise a stale app.js (in the browser or a CDN in front)
+// keeps running old frontend code after an update.
+app.use(express.static(path.join(config.root, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (/\.(html|js)$/i.test(filePath)) res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+  },
+}));
 app.get('/{*splat}', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();
+  res.setHeader('Cache-Control', 'no-cache, must-revalidate');
   res.sendFile(path.join(config.root, 'public', 'index.html'));
 });
 

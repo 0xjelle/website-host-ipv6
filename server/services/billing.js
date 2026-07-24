@@ -14,7 +14,10 @@ const config = require('../config');
 const { getSetting, setSetting } = require('../db');
 
 const PER_SITE = {
-  price: process.env.STRIPE_PRICE_PERSITE || null,          // Stripe price id (per-unit, recurring)
+  // Accepts a price id ("price_...") or a product id ("prod_..."), which is
+  // resolved to that product's price - the two are easy to mix up and only a
+  // price can be charged.
+  price: process.env.STRIPE_PRICE_PERSITE || null,
   label: process.env.BILLING_PRICE_LABEL || '€20 / site / month',
 };
 
@@ -116,9 +119,10 @@ const dashUrl = () => `http://${config.publicHost}:${config.adminPort}`;
 // metadata (on the session AND the subscription) so webhooks can link back.
 async function createCheckout(user) {
   if (!configured()) throw new Error('Billing is not configured on this server');
+  const price = await resolvePrice();
   const s = await api('POST', '/checkout/sessions', {
     mode: 'subscription',
-    line_items: { 0: { price: PER_SITE.price, quantity: 1 } },
+    line_items: { 0: { price, quantity: 1 } },
     client_reference_id: String(user.id),
     customer_email: user.email,
     allow_promotion_codes: 'true',
@@ -189,4 +193,32 @@ async function setQuantity(itemId, quantity) {
 // Fetch a subscription (used to resolve the item id after checkout).
 function getSubscription(id) { return api('GET', `/subscriptions/${id}`); }
 
-module.exports = { PER_SITE, ANCHOR_DAY, configured, subscribed, verifyWebhook, createCheckout, portalUrl, setQuantity, getSubscription, nextAnchor };
+// Resolve the configured id to a usable price id. A product id is turned into
+// its default price, falling back to its single active recurring price.
+// Cached after the first successful lookup.
+let _resolvedPrice = null;
+async function resolvePrice() {
+  const configuredId = PER_SITE.price;
+  if (!configuredId) throw new Error('No Stripe price configured (STRIPE_PRICE_PERSITE)');
+  if (configuredId.startsWith('price_')) return configuredId;
+  if (_resolvedPrice) return _resolvedPrice;
+  if (!configuredId.startsWith('prod_')) {
+    throw new Error(`STRIPE_PRICE_PERSITE should be a price ("price_...") or product ("prod_...") id, got "${configuredId}"`);
+  }
+  const product = await api('GET', `/products/${configuredId}`);
+  let priceId = typeof product.default_price === 'string' ? product.default_price : (product.default_price && product.default_price.id);
+  if (!priceId) {
+    const list = await api('GET', `/prices?product=${encodeURIComponent(configuredId)}&active=true&limit=100`);
+    const recurring = (list.data || []).filter(p => p.recurring);
+    if (!recurring.length) throw new Error(`Product ${configuredId} has no active recurring price - add a monthly price to it in Stripe`);
+    if (recurring.length > 1) {
+      throw new Error(`Product ${configuredId} has ${recurring.length} active recurring prices - set STRIPE_PRICE_PERSITE to the specific price id you want`);
+    }
+    priceId = recurring[0].id;
+  }
+  _resolvedPrice = priceId;
+  console.log(`⬡ Billing: product ${configuredId} resolved to price ${priceId}`);
+  return priceId;
+}
+
+module.exports = { PER_SITE, ANCHOR_DAY, configured, subscribed, verifyWebhook, createCheckout, portalUrl, setQuantity, getSubscription, nextAnchor, resolvePrice };

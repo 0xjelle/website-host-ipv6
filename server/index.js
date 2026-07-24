@@ -61,6 +61,15 @@ require('./services/poller').start();     // poll GitHub for pushes (auto-deploy
 require('./services/acme').startRenewals(); // stage SSL renewals before expiry
 require('./services/cloudflare').start();   // load Cloudflare edge IP ranges (real client IP behind CF)
 require('./services/cfsaas').start();       // poll Cloudflare-for-SaaS custom hostname statuses
+// Validate the Stripe price/product up front so a misconfiguration shows in the
+// log at boot instead of failing when a customer clicks Subscribe.
+(() => {
+  const b = require('./services/billing');
+  if (!b.configured()) return;
+  b.resolvePrice()
+    .then((p) => console.log(`⬡ Billing: Stripe ready (per-site price ${p}, billed on day ${b.ANCHOR_DAY})`))
+    .catch((e) => console.error(`⚠ Billing misconfigured: ${e.message}`));
+})();
 
 // Resume apps that were running before the restart (reaping any process groups
 // a previous platform run left behind so ports are free). Stopped apps keep

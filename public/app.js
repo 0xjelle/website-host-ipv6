@@ -887,13 +887,19 @@
         if (st.status === 'failed') return pill2('failed', 'failed');
         return pill2('stopped', 'no certificate');
       };
-      const render = (st) => {
+      const render = (st, cf) => {
         if (!st.available) { sslBody().innerHTML = `<div class="empty">SSL support isn't installed on this server (the <code class="code">acme-client</code> package). Run <code class="code">npm install</code> and restart.</div>`; return; }
         const domains = st.domains_configured || [];
         const eligible = domains.filter(d => !/\.sslip\.io$/i.test(d) && !/^\d+\.\d+\.\d+\.\d+$/.test(d));
+        // Domains that Cloudflare already secures (active custom hostname) don't
+        // need a Let's Encrypt cert — reflect that instead of "no certificate".
+        const cfActive = (cf && cf.enabled ? (cf.hostnames || []) : []).filter(h => h.active).map(h => h.hostname);
+        const statusHtml = st.status === 'active' ? statePill(st)
+          : (cfActive.length ? pill2('live', 'active · secured by Cloudflare') : statePill(st));
         sslBody().innerHTML = `
+          ${cfActive.length ? `<div class="first-user-banner" style="margin-bottom:1rem">🔒 <b>${cfActive.map(esc).join(', ')}</b> ${cfActive.length > 1 ? 'are' : 'is'} secured automatically by <b>Cloudflare</b> — no action needed here. A Let's Encrypt certificate below is only for <b>direct</b> access that bypasses Cloudflare.</div>` : ''}
           <div class="kv" style="margin-bottom:1rem">
-            <span class="k">Status</span><span class="v">${statePill(st)}</span>
+            <span class="k">Status</span><span class="v">${statusHtml}</span>
             ${st.not_after ? `<span class="k">Expires</span><span class="v">${fmtDate(st.not_after)} (${st.daysLeft}d)</span>` : ''}
             ${st.issuer ? `<span class="k">Issuer</span><span class="v">${esc(st.issuer)}${st.staging ? ' — staging (not trusted by browsers)' : ''}</span>` : ''}
             <span class="k">Domains</span><span class="v">${domains.length ? domains.map(esc).join(', ') : '<span style="color:var(--warn)">none — add a custom domain in Settings first</span>'}</span>
@@ -945,7 +951,10 @@
           try { await api(`/sites/${id}/ssl`, { method: 'PATCH', body: { auto_renew: e.target.checked } }); toast('Saved', 'ok'); } catch (err) { oops(err); }
         });
       };
-      const load = () => api(`/sites/${id}/ssl`).then(render).catch(e => { sslBody().innerHTML = `<div style="color:var(--bad)">${esc(e.message)}</div>`; });
+      const load = () => Promise.all([
+        api(`/sites/${id}/ssl`),
+        api(`/sites/${id}/domains/cf`).catch(() => ({ enabled: false, hostnames: [] })),
+      ]).then(([st, cf]) => render(st, cf)).catch(e => { sslBody().innerHTML = `<div style="color:var(--bad)">${esc(e.message)}</div>`; });
       load();
     }
 

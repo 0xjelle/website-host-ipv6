@@ -6,6 +6,11 @@
   // ── helpers ─────────────────────────────────────────────────────
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content; };
+  // Query params carried on the hash route, e.g. "#/billing?checkout=success".
+  const hashQuery = () => {
+    const i = location.hash.indexOf('?');
+    return new URLSearchParams(i >= 0 ? location.hash.slice(i + 1) : '');
+  };
 
   async function api(path, opts = {}) {
     // Bound every request so a non-responding server surfaces an error instead
@@ -581,12 +586,22 @@
 
   // ── sites list ──────────────────────────────────────────────────
   async function pageSites() {
-    const [{ sites }, ghState] = await Promise.all([api('/sites'), api('/github').catch(() => ({ connected: false }))]);
+    const [{ sites }, ghState, bill] = await Promise.all([
+      api('/sites'),
+      api('/github').catch(() => ({ connected: false })),
+      api('/billing').catch(() => ({ configured: false })),
+    ]);
+    // A subscription is required to create sites (the server enforces this too;
+    // this just explains it up front instead of showing a payment error).
+    const needsPlan = bill.configured && !bill.subscribed && me.role !== 'admin';
     const c = h(`
       <div>
         <div class="page-head"><h1>Sites</h1><div class="grow"></div>
           <button class="btn" id="ghconnect">${ghState.connected ? `🐙 ${esc(ghState.login)}` : '🐙 Connect GitHub'}</button>
           <button class="btn primary" id="newsite">＋ New site</button></div>
+        ${needsPlan ? `<div class="first-user-banner" style="border-color:rgba(255,201,120,.3);background:rgba(255,201,120,.1);color:#ffd9a3">
+          💳 <b>A subscription is required to host a site.</b> Hosting is ${esc(bill.price_label || 'billed per site')} - subscribe once and every site you add is billed automatically.
+          <div style="margin-top:.7rem"><a class="btn primary" href="#/billing">Go to Billing →</a></div></div>` : ''}
         ${sites.length ? `<div class="site-grid">${sites.map(s => `
           <div class="site-card" data-id="${s.id}">
             <div class="s-top"><span class="type-badge ${s.type}">${s.type}</span>
@@ -600,7 +615,10 @@
         : `<div class="empty"><div class="big">▤</div>No sites yet. Create your first one - static HTML or a Node.js app.</div>`}
       </div>`);
     const main = shell('sites', c);
-    main.querySelector('#newsite').addEventListener('click', () => newSiteModal(ghState));
+    main.querySelector('#newsite').addEventListener('click', () => {
+      if (needsPlan) { toast('Subscribe first - hosting is billed per site.', ''); location.hash = '#/billing'; return; }
+      newSiteModal(ghState);
+    });
     main.querySelector('#ghconnect').addEventListener('click', () => githubModal(ghState));
     main.querySelectorAll('.site-card').forEach(el =>
       el.addEventListener('click', () => { location.hash = `#/sites/${el.dataset.id}`; }));
@@ -1768,7 +1786,29 @@
     </div>`).firstElementChild;
     const main = shell('billing', c);
     const box = () => main.querySelector('#billbody');
-    const load = () => api('/billing').then(render).catch(e => cardError(box(), e.message || 'Could not load billing', load));
+    // Coming back from Checkout: Stripe redirects immediately, but the webhook
+    // that records the subscription can land a moment later - so poll briefly
+    // instead of telling the customer they aren't subscribed.
+    let justPaid = hashQuery().get('checkout') === 'success';
+    if (hashQuery().get('checkout') === 'cancelled') {
+      toast('Checkout cancelled - nothing was charged.', '');
+      history.replaceState(null, '', '#/billing');
+    }
+    let waited = 0;
+    const load = () => api('/billing').then((b) => {
+      if (justPaid && !b.subscribed && waited < 20000) {
+        box().classList.add('empty');
+        box().textContent = 'Confirming your subscription with Stripe…';
+        waited += 1500;
+        setTimeout(load, 1500);
+        return;
+      }
+      if (justPaid && b.subscribed) {
+        toast('Subscription active - you can create your sites now 🎉', 'ok');
+        history.replaceState(null, '', '#/billing');
+      }
+      render(b);
+    }).catch(e => cardError(box(), e.message || 'Could not load billing', load));
     const render = (b) => {
       const el = box(); el.classList.remove('empty');
       if (!b.configured) {
@@ -1787,7 +1827,13 @@
             <span class="k">Billing day</span><span class="v">${esc(ord(b.anchor_day))} of each month</span>
             ${b.renews_at ? `<span class="k">${b.cancelling ? 'Active until' : 'Next invoice'}</span><span class="v">${fmtDate(b.renews_at)}</span>` : ''}
           </div>
-          <button class="btn" id="portal">Manage subscription</button>`;
+          ${b.sites_used === 0 ? `<div class="first-user-banner" style="border-color:rgba(79,227,166,.3);background:rgba(79,227,166,.1);color:#b6f5da">
+            ✅ <b>You're all set.</b> Your subscription is active - create your first website to get it online. Each extra site is added to your bill automatically.
+            <div style="margin-top:.7rem"><a class="btn primary" href="#/sites">Create your first site →</a></div></div>` : ''}
+          <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+            <button class="btn" id="portal">Manage subscription</button>
+            ${b.sites_used > 0 ? `<a class="btn" href="#/sites">Your sites</a>` : ''}
+          </div>`;
         el.querySelector('#portal').addEventListener('click', async () => {
           try { const r = await api('/billing/portal', { method: 'POST' }); window.open(r.url, '_blank'); } catch (e) { oops(e); }
         });
@@ -1877,7 +1923,9 @@
         return renderAuth(s.hasUsers, null, s.turnstile_site_key);
       }
     }
-    const route = location.hash.replace(/^#\//, '') || 'overview';
+    // Strip any query string: "#/billing?checkout=success" is still the billing
+    // route (without this it matched nothing and fell through to overview).
+    const route = location.hash.replace(/^#\//, '').split('?')[0] || 'overview';
     try {
       if (route === 'overview') await pageOverview();
       else if (route === 'sites') await pageSites();

@@ -428,16 +428,22 @@ router.delete('/:id/files', async (req, res) => {
 router.delete('/:id', (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;
-  // Capture Cloudflare hostname ids before the row cascade-deletes, then remove
-  // them from Cloudflare afterwards (best-effort/async).
+  // Capture Cloudflare hostname ids before the row is gone.
   const cfIds = cfsaas.cfIdsForSite(site.id);
   procman.stop(site.id);
   if (site.ipv6_addr) ipam.removeAddr(site.ipv6_addr);
   db.prepare('DELETE FROM sites WHERE id = ?').run(site.id);
-  require('fs').rmSync(require('path').join(config.sitesDir, String(site.id)), { recursive: true, force: true });
-  cfsaas.deleteIds(cfIds).catch(() => {});
   logActivity(req.user.id, 'site.delete', `"${site.name}"`);
+  // Respond immediately — the site is gone from the DB, so it disappears from
+  // the UI right away. The heavy cleanup (deleting the site directory, which can
+  // hold a huge node_modules tree, plus removing Cloudflare hostnames) runs in
+  // the background with async I/O so it never blocks the event loop / the
+  // dashboard. (rmSync here used to freeze the whole server for minutes.)
   res.json({ ok: true });
+  const dir = path.join(config.sitesDir, String(site.id));
+  fs.promises.rm(dir, { recursive: true, force: true })
+    .catch((e) => console.error(`site delete: could not remove ${dir}: ${e.message}`));
+  cfsaas.deleteIds(cfIds).catch(() => {});
 });
 
 module.exports = router;

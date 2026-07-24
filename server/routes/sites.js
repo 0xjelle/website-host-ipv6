@@ -105,17 +105,14 @@ router.post('/', async (req, res) => {
   if (!cleanDomains.every(d => /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(d))) {
     return res.status(400).json({ error: 'Enter a valid custom domain (e.g. www.example.com)' });
   }
-  // Enforce the plan's site limit (only when billing is configured; admins are
-  // the operator, not customers, so they're exempt).
+  // Pay-per-site: a non-admin must have an active subscription to create sites
+  // (each site adds to the billed quantity). Only enforced when billing is set
+  // up; admins are the operator, not customers.
+  let billUser = null;
   if (billing.configured() && req.user.role !== 'admin') {
-    const u = db.prepare('SELECT plan FROM users WHERE id = ?').get(req.user.id);
-    const lim = billing.limits(u.plan || 'free');
-    const count = db.prepare('SELECT COUNT(*) AS n FROM sites WHERE user_id = ?').get(req.user.id).n;
-    if (count >= lim.maxSites) {
-      const msg = lim.maxSites === 0
-        ? 'You need a subscription to create a site — pick a plan in Billing.'
-        : `Your ${lim.name} plan allows ${lim.maxSites} site${lim.maxSites === 1 ? '' : 's'}. Upgrade in Billing to add more.`;
-      return res.status(402).json({ error: msg });
+    billUser = db.prepare('SELECT ls_status, ls_subscription_id, ls_item_id FROM users WHERE id = ?').get(req.user.id);
+    if (!billing.subscribed(billUser)) {
+      return res.status(402).json({ error: 'You need an active subscription to create a site — it is billed per site. Set it up in Billing.' });
     }
   }
 
@@ -141,6 +138,11 @@ router.post('/', async (req, res) => {
   ipam.assignToSite(r.lastInsertRowid); // dedicated IPv6 from the pool, if configured
   const site = db.prepare('SELECT * FROM sites WHERE id = ?').get(r.lastInsertRowid);
   logActivity(req.user.id, 'site.create', `"${site.name}" (${site.type})`);
+  // Per-site billing: set the subscription quantity to the new site count.
+  if (billUser && billUser.ls_item_id) {
+    const n = db.prepare('SELECT COUNT(*) AS n FROM sites WHERE user_id = ?').get(req.user.id).n;
+    billing.setQuantity(billUser.ls_item_id, n).catch(e => console.error('billing quantity sync:', e.message));
+  }
   // Register any custom domains with Cloudflare for SaaS, and return the result
   // so the UI can show the DNS records to add right after creation. Best-effort:
   // a Cloudflare failure never blocks site creation (it's retried on next sync).
@@ -448,6 +450,7 @@ router.delete('/:id', (req, res) => {
   if (!site) return;
   // Capture Cloudflare hostname ids before the row is gone.
   const cfIds = cfsaas.cfIdsForSite(site.id);
+  const owner = db.prepare('SELECT ls_item_id FROM users WHERE id = ?').get(site.user_id);
   procman.stop(site.id);
   if (site.ipv6_addr) ipam.removeAddr(site.ipv6_addr);
   db.prepare('DELETE FROM sites WHERE id = ?').run(site.id);
@@ -462,6 +465,11 @@ router.delete('/:id', (req, res) => {
   fs.promises.rm(dir, { recursive: true, force: true })
     .catch((e) => console.error(`site delete: could not remove ${dir}: ${e.message}`));
   cfsaas.deleteIds(cfIds).catch(() => {});
+  // Per-site billing: drop the subscription quantity to the new site count.
+  if (billing.configured() && owner && owner.ls_item_id) {
+    const n = db.prepare('SELECT COUNT(*) AS n FROM sites WHERE user_id = ?').get(site.user_id).n;
+    billing.setQuantity(owner.ls_item_id, n).catch(e => console.error('billing quantity sync:', e.message));
+  }
   // Remove the site's dedicated isolation user (best-effort; only exists when
   // running as root with per-site isolation active).
   try { require('child_process').execFile('userdel', [`hsite${site.id}`], () => {}); } catch { /* ignore */ }

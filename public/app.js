@@ -1772,27 +1772,30 @@
     const render = (b) => {
       const el = box(); el.classList.remove('empty');
       if (!b.configured) {
-        el.innerHTML = `<p style="color:var(--ink-2)">Billing isn't set up on this server — everything is free with no limits. <span style="color:var(--ink-3)">(Admin: configure Lemon Squeezy keys in <code class="code">.env</code> to enable plans.)</span></p>`;
+        el.innerHTML = `<p style="color:var(--ink-2)">Billing isn't set up on this server — everything is free with no limits. <span style="color:var(--ink-3)">(Admin: configure Lemon Squeezy keys in <code class="code">.env</code> to enable per-site billing.)</span></p>`;
         return;
       }
-      const cur = b.limits;
+      if (b.subscribed) {
+        el.innerHTML = `
+          <div class="kv" style="margin-bottom:1rem">
+            <span class="k">Plan</span><span class="v">Pay per site · ${esc(b.price_label)}</span>
+            <span class="k">Status</span><span class="v">${esc(b.status || 'active')}</span>
+            <span class="k">Sites (billed)</span><span class="v">${b.sites_used}</span>
+            ${b.renews_at ? `<span class="k">Renews</span><span class="v">${fmtDate(b.renews_at)}</span>` : ''}
+          </div>
+          <button class="btn" id="portal">Manage subscription</button>`;
+        el.querySelector('#portal').addEventListener('click', async () => {
+          try { const r = await api('/billing/portal', { method: 'POST' }); window.open(r.url, '_blank'); } catch (e) { oops(e); }
+        });
+        return;
+      }
       el.innerHTML = `
-        <div class="kv" style="margin-bottom:1rem">
-          <span class="k">Current plan</span><span class="v"><b>${esc(cur.name)}</b>${b.status ? ` · ${esc(b.status)}` : ''}</span>
-          <span class="k">Sites</span><span class="v">${b.sites_used} / ${cur.maxSites}</span>
-          ${b.renews_at ? `<span class="k">Renews</span><span class="v">${fmtDate(b.renews_at)}</span>` : ''}
-        </div>
-        <div style="display:flex;gap:.6rem;flex-wrap:wrap">
-          ${b.plans.filter(p => p.purchasable && p.key !== b.plan).map(p => `<button class="btn primary" data-plan="${esc(p.key)}">Subscribe · ${esc(p.name)} · ${p.maxSites} sites${p.price ? ` · ${esc(p.price)}` : ''}</button>`).join('')}
-          ${b.status ? `<button class="btn" id="portal">Manage subscription</button>` : ''}
-        </div>`;
-      el.querySelectorAll('[data-plan]').forEach(btn => btn.addEventListener('click', async () => {
-        btn.disabled = true;
-        try { const r = await api('/billing/checkout', { method: 'POST', body: { plan: btn.dataset.plan } }); location.href = r.url; }
-        catch (e) { oops(e); btn.disabled = false; }
-      }));
-      el.querySelector('#portal')?.addEventListener('click', async () => {
-        try { const r = await api('/billing/portal', { method: 'POST' }); window.open(r.url, '_blank'); } catch (e) { oops(e); }
+        <p style="color:var(--ink-2)">Hosting is <b>pay per site</b> — <b>${esc(b.price_label)}</b>. Subscribe once; every website you create is added to your bill, and deleting one lowers it automatically.</p>
+        <button class="btn primary" id="sub">Subscribe</button>`;
+      el.querySelector('#sub').addEventListener('click', async (e) => {
+        e.target.disabled = true;
+        try { const r = await api('/billing/checkout', { method: 'POST' }); location.href = r.url; }
+        catch (err) { oops(err); e.target.disabled = false; }
       });
     };
     load();

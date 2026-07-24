@@ -6,20 +6,21 @@ const https = require('https');
 
 // Plans and their limits. Paid plans map to a Lemon Squeezy *variant* id (from
 // your store), supplied via env so you don't hard-code product ids.
-// No free hosting — an account must subscribe to a package to create sites.
-// Paid plans map to a Lemon Squeezy variant id; price labels are for display
-// only (the real charge is configured on the LS product).
-const PLANS = {
-  free:    { name: 'Free',    maxSites: 0,  variant: null, price: '' },
-  starter: { name: 'Starter', maxSites: 5,  variant: process.env.LS_VARIANT_STARTER || null, price: process.env.LS_PRICE_STARTER || '€5/mo' },
-  pro:     { name: 'Pro',     maxSites: 25, variant: process.env.LS_VARIANT_PRO || null, price: process.env.LS_PRICE_PRO || '€15/mo' },
+// Pay-per-site: one subscription to a per-unit "seat" variant whose quantity is
+// kept equal to the account's number of sites. Price label is display-only —
+// the real per-site charge is configured on the Lemon Squeezy product.
+const PER_SITE = {
+  variant: process.env.LS_VARIANT_PERSITE || null,
+  price: process.env.LS_PRICE_PERSITE || '€3 / site / month',
 };
 
-function configured() { return !!(process.env.LEMONSQUEEZY_API_KEY && process.env.LEMONSQUEEZY_STORE_ID); }
-function limits(planKey) { return PLANS[planKey] || PLANS.free; }
-function planByVariant(vid) {
-  for (const [k, p] of Object.entries(PLANS)) if (p.variant && String(p.variant) === String(vid)) return k;
-  return null;
+// Requires the per-site variant too, so nothing is enforced until it's set.
+function configured() { return !!(process.env.LEMONSQUEEZY_API_KEY && process.env.LEMONSQUEEZY_STORE_ID && PER_SITE.variant); }
+
+// A user counts as subscribed while the subscription is live (cancelled stays
+// usable until it actually expires).
+function subscribed(user) {
+  return !!(user && user.ls_subscription_id && ['active', 'on_trial', 'past_due', 'cancelled'].includes(user.ls_status));
 }
 
 // Verify a webhook's HMAC-SHA256 signature over the raw request body.
@@ -54,23 +55,30 @@ function lsApi(method, path, body) {
   });
 }
 
-// Create a hosted checkout for a plan, tagged with the user id so the webhook
-// can link the resulting subscription back to the account.
-async function createCheckout(user, planKey) {
+// Hosted checkout for the per-site subscription, tagged with the user id so the
+// webhook links the subscription back to the account.
+async function createCheckout(user) {
   if (!configured()) throw new Error('Billing is not configured on this server');
-  const plan = PLANS[planKey];
-  if (!plan || !plan.variant) throw new Error('That plan is not available for purchase');
   const r = await lsApi('POST', '/checkouts', {
     data: {
       type: 'checkouts',
       attributes: { checkout_data: { email: user.email, custom: { user_id: String(user.id) } } },
       relationships: {
         store: { data: { type: 'stores', id: String(process.env.LEMONSQUEEZY_STORE_ID) } },
-        variant: { data: { type: 'variants', id: String(plan.variant) } },
+        variant: { data: { type: 'variants', id: String(PER_SITE.variant) } },
       },
     },
   });
   return r.data.attributes.url;
 }
 
-module.exports = { PLANS, configured, limits, planByVariant, verifyWebhook, createCheckout };
+// Keep the subscription quantity equal to the account's site count (min 1).
+async function setQuantity(itemId, quantity) {
+  if (!configured() || !itemId) return;
+  const qty = Math.max(1, Number(quantity) || 1);
+  await lsApi('PATCH', `/subscription-items/${itemId}`, {
+    data: { type: 'subscription-items', id: String(itemId), attributes: { quantity: qty } },
+  });
+}
+
+module.exports = { PER_SITE, configured, subscribed, verifyWebhook, createCheckout, setQuantity };

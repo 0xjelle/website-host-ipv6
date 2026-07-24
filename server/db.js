@@ -162,6 +162,7 @@ addColumn('users', 'ls_status TEXT');                         // Lemon Squeezy s
 addColumn('users', 'ls_subscription_id TEXT');               // Lemon Squeezy subscription id
 addColumn('users', 'ls_customer_id TEXT');                   // Lemon Squeezy customer id (portal)
 addColumn('users', 'ls_renews_at TEXT');                     // next renewal timestamp
+addColumn('users', 'ls_item_id TEXT');                       // subscription item id (for per-site quantity)
 addColumn('sites', 'not_found_html TEXT'); // optional custom 404 page (served by the edge proxy)
 addColumn('cf_hostnames', 'ssl_detail TEXT'); // issued-cert details (authority, validity) as JSON
 

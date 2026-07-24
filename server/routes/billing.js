@@ -20,10 +20,10 @@ function webhook(req, res) {
   if (!user) return;
 
   if (name === 'subscription_created' || name === 'subscription_updated' || name === 'subscription_resumed') {
-    const plan = billing.planByVariant(attrs.variant_id) || 'free';
-    db.prepare(`UPDATE users SET plan = ?, ls_status = ?, ls_subscription_id = ?, ls_customer_id = ?, ls_renews_at = ? WHERE id = ?`)
-      .run(plan, attrs.status || null, String(ev.data.id || ''), String(attrs.customer_id || ''), attrs.renews_at || null, user.id);
-    logActivity(user.id, 'billing.subscription', `${name} → ${plan} (${attrs.status})`);
+    const itemId = (attrs.first_subscription_item || {}).id || null;
+    db.prepare(`UPDATE users SET plan = 'persite', ls_status = ?, ls_subscription_id = ?, ls_customer_id = ?, ls_item_id = COALESCE(?, ls_item_id), ls_renews_at = ? WHERE id = ?`)
+      .run(attrs.status || null, String(ev.data.id || ''), String(attrs.customer_id || ''), itemId ? String(itemId) : null, attrs.renews_at || null, user.id);
+    logActivity(user.id, 'billing.subscription', `${name} (${attrs.status})`);
   } else if (name === 'subscription_expired' || name === 'subscription_cancelled') {
     // On cancel, keep access until period end; on expire, drop to free.
     const dropToFree = name === 'subscription_expired';
@@ -38,22 +38,20 @@ const router = express.Router();
 router.use(requireAuth);
 
 router.get('/', (req, res) => {
-  const u = db.prepare('SELECT plan, ls_status, ls_renews_at FROM users WHERE id = ?').get(req.user.id);
-  const plan = u.plan || 'free';
+  const u = db.prepare('SELECT ls_status, ls_renews_at FROM users WHERE id = ?').get(req.user.id);
   const count = db.prepare('SELECT COUNT(*) AS n FROM sites WHERE user_id = ?').get(req.user.id).n;
   res.json({
     configured: billing.configured(),
-    plan, status: u.ls_status || null, renews_at: u.ls_renews_at || null,
-    limits: billing.limits(plan), sites_used: count,
-    plans: Object.entries(billing.PLANS).map(([key, p]) => ({ key, name: p.name, maxSites: p.maxSites, price: p.price || '', purchasable: !!p.variant })),
+    subscribed: billing.subscribed(u),
+    status: u.ls_status || null, renews_at: u.ls_renews_at || null,
+    price_label: billing.PER_SITE.price,
+    sites_used: count,
   });
 });
 
 router.post('/checkout', async (req, res) => {
-  try {
-    const url = await billing.createCheckout(req.user, String((req.body || {}).plan || ''));
-    res.json({ url });
-  } catch (e) { res.status(400).json({ error: e.message }); }
+  try { res.json({ url: await billing.createCheckout(req.user) }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 router.post('/portal', (req, res) => {

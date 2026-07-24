@@ -832,11 +832,7 @@
           <div class="first-user-banner" style="margin-bottom:1rem">🔄 <b>Auto-deploy is on by polling</b> — Hosting checks GitHub for new
             commits every couple of minutes and redeploys, so it works even when your server isn't reachable from the internet.
             <button class="btn small" id="checknow" style="margin-left:.4rem">Check now</button></div>
-          <details style="margin-bottom:.6rem"><summary style="cursor:pointer;color:var(--ink-3);font-size:.85rem">Prefer instant webhooks? (needs a public server)</summary>
-          <div style="padding-top:.8rem">
-          <p style="color:var(--ink-3);font-size:.82rem">If your server is reachable from GitHub, add a webhook for instant deploys — done for you with your connected account.</p>
-          <button class="btn small" id="mkhook">⚡ Create webhook automatically</button>
-          </div></details>
+          <div style="margin-bottom:.6rem"><button class="btn small" id="mkhook">⚡ Create webhook automatically</button></div>
           <label class="field" style="display:flex;align-items:center;gap:.5rem;margin-top:.4rem">
             <input type="checkbox" id="autodep" style="width:auto" ${site.auto_deploy ? 'checked' : ''}>
             <span class="lbl" style="margin:0">Auto-deploy on push (polling + webhook)</span></label>`

@@ -171,6 +171,10 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
       }
       const serveDir = path.join(workDir, site.static_dir || '');
       if (!fs.existsSync(serveDir)) return finish(false, `static directory "${site.static_dir}" not found in repo`);
+      // In container mode, serve the static site from its own nginx container.
+      if (procman.useContainers()) {
+        procman.start(db.prepare('SELECT * FROM sites WHERE id = ?').get(siteId), config);
+      }
       return finish(true, 'deployed — static site is live');
     } catch (err) {
       finish(false, `unexpected error: ${err.message}`);

@@ -58,10 +58,15 @@ require('./services/acme').startRenewals(); // stage SSL renewals before expiry
 require('./services/cloudflare').start();   // load Cloudflare edge IP ranges (real client IP behind CF)
 require('./services/cfsaas').start();       // poll Cloudflare-for-SaaS custom hostname statuses
 
-// Resume node apps that were running before the restart (reaping any process
-// groups a previous platform run left behind so ports are free). Stopped apps
-// keep running locally for testing, so they're resumed too.
-for (const site of db.prepare("SELECT * FROM sites WHERE type = 'node' AND status IN ('live','stopped')").all()) {
+// Resume apps that were running before the restart (reaping any process groups
+// a previous platform run left behind so ports are free). Stopped apps keep
+// running locally for testing, so they're resumed too. In container mode static
+// sites are containerised as well, so resume them too; otherwise only node.
+const resumeStatic = procman.useContainers();
+const resumeRows = db.prepare(
+  `SELECT * FROM sites WHERE status IN ('live','stopped') AND (type = 'node'${resumeStatic ? " OR type = 'static'" : ''})`
+).all();
+for (const site of resumeRows) {
   console.log(`↻ resuming site #${site.id} "${site.name}"`);
   procman.reapStale(site);
   try { procman.start(site, config); } catch (e) { console.error(`  failed: ${e.message}`); }

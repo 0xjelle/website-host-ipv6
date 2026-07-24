@@ -227,7 +227,7 @@ router.post('/:id/stop', (req, res) => {
   // the process running (starting it if it isn't) so you can still test the
   // site locally before making it live again.
   db.prepare("UPDATE sites SET status = 'stopped' WHERE id = ?").run(site.id);
-  if (site.type === 'node' && !procman.status(site.id).running) {
+  if ((site.type === 'node' || procman.useContainers()) && !procman.status(site.id).running) {
     procman.resetRestarts(site.id);
     procman.start(db.prepare('SELECT * FROM sites WHERE id = ?').get(site.id), config);
   }
@@ -239,7 +239,7 @@ router.post('/:id/start', (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;
   db.prepare("UPDATE sites SET status = 'live' WHERE id = ?").run(site.id);
-  if (site.type === 'node') {
+  if (site.type === 'node' || procman.useContainers()) {
     procman.resetRestarts(site.id);
     procman.start(db.prepare('SELECT * FROM sites WHERE id = ?').get(site.id), config);
   }

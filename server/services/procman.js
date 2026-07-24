@@ -51,6 +51,57 @@ function dockerBin() {
 // Containerise each site when USE_CONTAINERS=1 and Docker is actually usable.
 function useContainers() { return process.env.USE_CONTAINERS === '1' && !!dockerBin(); }
 
+// Static sites normally have no port; give them one when they're containerised.
+function ensureAppPort(site, config) {
+  if (site.app_port) return site.app_port;
+  const used = new Set(db.prepare('SELECT app_port FROM sites WHERE app_port IS NOT NULL').all().map(r => r.app_port));
+  let p = config.appPortBase;
+  while (used.has(p)) p++;
+  db.prepare('UPDATE sites SET app_port = ? WHERE id = ?').run(p, site.id);
+  site.app_port = p;
+  return p;
+}
+
+// Serve a static site from its own nginx container (mounted read-only). Same
+// isolation/limits as node apps; the edge proxy routes to it, falling back to
+// serving files directly if the container isn't up.
+function startStaticContainer(site, config, cwd, entry) {
+  const name = `hsite${site.id}`;
+  const port = ensureAppPort(site, config);
+  const sub = String(site.static_dir || '').replace(/\.\.+/g, '').replace(/^\/+/, '');
+  const docroot = '/site' + (sub ? '/' + sub : '');
+  const conf = `server {
+  listen ${port};
+  server_name _;
+  root ${docroot};
+  index index.html;
+  location / { try_files $uri $uri/ /index.html; }
+  error_page 404 /404.html;
+}
+`;
+  const confPath = path.join(config.sitesDir, String(site.id), 'nginx.conf');
+  try { fs.writeFileSync(confPath, conf); }
+  catch (e) { appendLog(entry, `✖ nginx config write failed: ${e.message}`); db.prepare("UPDATE sites SET status = 'failed' WHERE id = ?").run(site.id); return entry; }
+  const mem = process.env.SITE_MEM || '256m';
+  const cpus = process.env.SITE_CPUS || '1';
+  const args = ['run', '-d', '--name', name, '--restart', 'unless-stopped',
+    '--memory', mem, '--cpus', cpus, '--pids-limit', '256',
+    '-v', `${cwd}:/site:ro`, '-v', `${confPath}:/etc/nginx/conf.d/default.conf:ro`,
+    '-p', `127.0.0.1:${port}:${port}`, 'nginx:alpine'];
+  try { execFileSync('docker', ['rm', '-f', name], { stdio: 'ignore' }); } catch { /* none */ }
+  try { execFileSync('docker', args, { stdio: ['ignore', 'ignore', 'pipe'] }); }
+  catch (e) { appendLog(entry, `✖ static container failed: ${String(e.stderr || e.message || '').trim()}`); db.prepare("UPDATE sites SET status = 'failed' WHERE id = ?").run(site.id); return entry; }
+  entry.container = true;
+  appendLog(entry, `🐳 static site in container ${name} (nginx:alpine · :${port})`);
+  const follower = spawn('docker', ['logs', '-f', '--tail', '200', name]);
+  entry.child = follower;
+  follower.stdout.on('data', d => appendLog(entry, d.toString()));
+  follower.stderr.on('data', d => appendLog(entry, d.toString()));
+  follower.on('error', () => {});
+  follower.on('exit', () => { if (procs.get(site.id) === entry) entry.child = null; });
+  return entry;
+}
+
 // Run a site's Node app inside its own Docker container: private filesystem +
 // network, CPU/memory caps. Deps are installed and the app built inside the
 // container so native modules match. The container name is hsite<id>.
@@ -115,8 +166,11 @@ function start(site, config) {
     return entry;
   }
 
-  // Strongest isolation: run in a container when enabled.
-  if (useContainers()) return startInContainer(site, cwd, entry);
+  // Strongest isolation: run in a container when enabled. Static sites get an
+  // nginx container; node apps get a node container.
+  if (useContainers()) {
+    return site.type === 'static' ? startStaticContainer(site, config, cwd, entry) : startInContainer(site, cwd, entry);
+  }
 
   // Otherwise: hand the site its own user and make it own its files, then run the
   // process as that user. If any of that fails, fall back to the platform user

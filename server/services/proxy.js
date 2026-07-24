@@ -196,6 +196,10 @@ function proxyToApp(site, req, res) {
     ur.pipe(res);
   });
   upstream.on('error', () => {
+    if (res.headersSent) return;
+    // A static site's container being down must never take the site offline —
+    // fall back to serving its files straight off disk.
+    if (site.type === 'static') return serveStatic(site, req, res);
     errorPage(res, 502, 'App unavailable', 'The application is starting up or has crashed. Try again shortly.');
   });
   req.pipe(upstream);
@@ -214,6 +218,10 @@ function handleRequest(req, res) {
   // disk) — isServable() has already kept them off their public routes.
   metrics.hit(site.id);
   if (site.type === 'node') return proxyToApp(site, req, res);
+  // Static: serve through its container when one is running; otherwise (or if
+  // containers are off) serve the files directly. This is also the safety net —
+  // a static site never goes down just because its container isn't up.
+  if (procman.useContainers() && site.app_port && procman.status(site.id).running) return proxyToApp(site, req, res);
   return serveStatic(site, req, res);
 }
 

@@ -176,12 +176,21 @@ function deleteHostname(cfId) {
 // the UI stays correct.
 function extractVerification(result) {
   const out = { cname_target: getConfig().fallbackOrigin || null, ownership: null, ssl_records: [] };
+  // Ownership TXT (_cf-custom-hostname): Cloudflare returns this alongside the
+  // CNAME. With HTTP DV it isn't strictly required, but adding it completes /
+  // speeds up verification and is the fallback when HTTP validation can't run —
+  // so we surface it as the "add this TXT too" step after the CNAME.
+  if (result.ownership_verification && result.ownership_verification.name) {
+    out.ownership = {
+      type: result.ownership_verification.type || 'txt',
+      name: result.ownership_verification.name,
+      value: result.ownership_verification.value,
+    };
+  }
   const ssl = result.ssl || {};
   const records = Array.isArray(ssl.validation_records) ? ssl.validation_records
     : (ssl.txt_name && ssl.txt_value ? [ssl] : []);
   for (const r of records) {
-    // Only DNS records the customer has to create matter here. HTTP-DV records
-    // carry http_url/http_body (served at the edge) and need no customer action.
     if (r.txt_name && r.txt_value) out.ssl_records.push({ type: 'txt', name: r.txt_name, value: r.txt_value });
   }
   return out;

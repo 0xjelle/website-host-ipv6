@@ -8,16 +8,30 @@
   const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content; };
 
   async function api(path, opts = {}) {
-    const res = await fetch('/api' + path, {
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      ...opts,
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-    });
-    let data = {};
-    try { data = await res.json(); } catch {}
-    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
-    return data;
+    // Bound every request so a non-responding server surfaces an error instead
+    // of hanging the UI on "Loading…" forever. Pass opts.timeout=0 to disable
+    // (e.g. large uploads); default 20s is plenty for normal calls.
+    const { timeout = 20000, ...fetchOpts } = opts;
+    const ctrl = new AbortController();
+    const timer = timeout > 0 ? setTimeout(() => ctrl.abort(), timeout) : null;
+    try {
+      const res = await fetch('/api' + path, {
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        signal: ctrl.signal,
+        ...fetchOpts,
+        body: fetchOpts.body !== undefined ? JSON.stringify(fetchOpts.body) : undefined,
+      });
+      let data = {};
+      try { data = await res.json(); } catch {}
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      return data;
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('Timed out — the server did not respond in 20s');
+      throw e;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   function toast(msg, kind = '') {
@@ -100,6 +114,14 @@
       ${cfCheck(hn.cname_detected, 'CNAME record detected in DNS', 'CNAME not added yet — add it below')}
       ${cfCheck(hn.ssl_status === 'active', 'SSL certificate issued (auto)', 'Certificate issues automatically once the CNAME is live')}
     </div>`;
+  }
+
+  // Render an error + Retry into a card body, so a failed/timed-out load is
+  // actionable instead of a permanent "Loading…".
+  function cardError(box, msg, retry) {
+    box.classList.remove('empty');
+    box.innerHTML = `<span style="color:var(--bad)">${esc(msg)}</span> <button class="btn small" id="cardretry" style="margin-left:.5rem">↻ Retry</button>`;
+    box.querySelector('#cardretry').addEventListener('click', retry);
   }
 
   // Shown right after a site with a custom domain is created, so the user gets
@@ -1090,7 +1112,7 @@
             <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.4rem"><b class="mono">${esc(hn.hostname)}</b> ${cfStatusPill(hn)}</div>
             ${cfChecklist(hn)}
             ${hn.last_error ? `<div style="color:var(--bad);font-size:.85rem;margin-bottom:.4rem">${esc(hn.last_error)}</div>` : ''}
-            ${hn.active ? '' : `<div style="color:var(--ink-2);font-size:.85rem;margin-bottom:.4rem">Add this record at your domain's DNS provider — just the one CNAME, no TXT:</div>
+            ${hn.active ? '' : `<div style="color:var(--ink-2);font-size:.85rem;margin-bottom:.4rem">Add these at your domain's DNS provider — the <b>CNAME</b> routes traffic; the <b>TXT</b> completes ownership verification:</div>
             ${cfRecordsTable(cfRecordRows(hn, d.fallback_origin))}`}
           </div>`).join('') + `<button class="btn small" id="cfsync">↻ Refresh status</button>`;
         cfCard.querySelector('#cfsync')?.addEventListener('click', async (e) => {
@@ -1099,11 +1121,13 @@
           catch (err) { oops(err); e.target.disabled = false; }
         });
       };
-      api(`/sites/${id}/domains/cf`).then(renderCf).catch(() => { cfCard.querySelector('#cfbody').textContent = 'Could not load Cloudflare routing status.'; });
+      const loadCf = () => { cfCard.querySelector('#cfbody').textContent = 'Loading…'; api(`/sites/${id}/domains/cf`).then(renderCf).catch((e) => cardError(cfCard.querySelector('#cfbody'), e.message || 'Could not load Cloudflare routing status.', loadCf)); };
+      loadCf();
 
       // ── Custom 404 page ──
       const nf = h(`<div class="card"><h2>Custom 404 page <span class="hint">served when a page isn't found</span></h2><div id="nfbody" class="empty">Loading…</div></div>`);
       body.appendChild(nf);
+      const loadNf = () => { const b = nf.querySelector('#nfbody'); b.textContent = 'Loading…'; b.className = 'empty';
       api(`/sites/${id}/notfound`).then(({ html }) => {
         const box = nf.querySelector('#nfbody');
         box.classList.remove('empty');
@@ -1129,7 +1153,8 @@
           try { await api(`/sites/${id}/notfound`, { method: 'PUT', body: { html: '' } }); toast('Custom 404 page removed', 'ok'); pageSiteDetail(id, 'settings'); }
           catch (err) { oops(err); }
         });
-      }).catch(() => { nf.querySelector('#nfbody').textContent = 'Could not load the custom 404 page.'; });
+      }).catch((e) => cardError(nf.querySelector('#nfbody'), e.message || 'Could not load the custom 404 page.', loadNf)); };
+      loadNf();
     }
   }
 

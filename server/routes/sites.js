@@ -448,6 +448,9 @@ router.delete('/:id', (req, res) => {
   fs.promises.rm(dir, { recursive: true, force: true })
     .catch((e) => console.error(`site delete: could not remove ${dir}: ${e.message}`));
   cfsaas.deleteIds(cfIds).catch(() => {});
+  // Remove the site's dedicated isolation user (best-effort; only exists when
+  // running as root with per-site isolation active).
+  try { require('child_process').execFile('userdel', [`hsite${site.id}`], () => {}); } catch { /* ignore */ }
 });
 
 module.exports = router;

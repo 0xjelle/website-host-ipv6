@@ -310,10 +310,16 @@ async function deleteIds(cfIds) {
   }
 }
 
-// Poll Cloudflare for hostnames that aren't fully active yet and update status.
+// Poll Cloudflare for hostnames that aren't fully active yet — and also
+// re-check active ones that haven't been refreshed in 12h, so the stored cert
+// details stay current when Cloudflare auto-renews (renewal is Cloudflare's
+// job; this just keeps our displayed expiry date honest).
 async function refreshStatuses() {
   if (!isEnabled()) return;
-  const rows = db.prepare("SELECT * FROM cf_hostnames WHERE cf_id IS NOT NULL AND (status IS NULL OR status != 'active' OR ssl_status IS NULL OR ssl_status != 'active')").all();
+  const rows = db.prepare(`SELECT * FROM cf_hostnames WHERE cf_id IS NOT NULL AND (
+      status IS NULL OR status != 'active' OR ssl_status IS NULL OR ssl_status != 'active'
+      OR updated_at IS NULL OR updated_at < datetime('now', '-12 hours')
+    )`).all();
   for (const row of rows) {
     try {
       const result = await getHostname(row.cf_id);

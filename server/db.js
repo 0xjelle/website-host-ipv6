@@ -1,9 +1,24 @@
+const fs = require('fs');
 const Database = require('better-sqlite3');
 const config = require('./config');
 
 const db = new Database(config.dbFile);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+
+// Multi-tenant hardening: site apps run as their own unprivileged users and
+// need to traverse dataDir → sites → <id>, but must NOT be able to read the
+// platform's database (customer secrets, tokens, env vars). Make the data dir
+// traversable-but-not-listable (0711) and the DB owner-only (0600). SQLite
+// creates the -wal/-shm files with the DB's permissions, so setting 0600 on the
+// main file before any writes keeps them private too.
+try {
+  fs.chmodSync(config.dataDir, 0o711);
+  fs.chmodSync(config.sitesDir, 0o711);
+  for (const suffix of ['', '-wal', '-shm']) {
+    try { fs.chmodSync(config.dbFile + suffix, 0o600); } catch { /* not present yet */ }
+  }
+} catch (e) { console.error('db hardening (chmod) failed:', e.message); }
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (

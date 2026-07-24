@@ -882,13 +882,16 @@
         const eligible = domains.filter(d => !/\.sslip\.io$/i.test(d) && !/^\d+\.\d+\.\d+\.\d+$/.test(d));
         // Domains that Cloudflare already secures (active custom hostname) don't
         // need a Let's Encrypt cert — reflect that instead of "no certificate".
-        const cfActive = (cf && cf.enabled ? (cf.hostnames || []) : []).filter(h => h.active).map(h => h.hostname);
+        const cfActiveHosts = (cf && cf.enabled ? (cf.hostnames || []) : []).filter(h => h.active);
+        const cfActive = cfActiveHosts.map(h => h.hostname);
+        const cfCert = cfActiveHosts.find(h => h.ssl_detail && h.ssl_detail.expires_on);
         const statusHtml = st.status === 'active' ? statePill(st)
           : (cfActive.length ? pill2('live', 'active') : statePill(st));
         sslBody().innerHTML = `
           <div class="kv" style="margin-bottom:1rem">
             <span class="k">Status</span><span class="v">${statusHtml}</span>
-            ${st.not_after ? `<span class="k">Expires</span><span class="v">${fmtDate(st.not_after)} (${st.daysLeft}d)</span>` : ''}
+            ${st.not_after ? `<span class="k">Expires</span><span class="v">${fmtDate(st.not_after)} (${st.daysLeft}d)</span>`
+              : (cfCert ? `<span class="k">Expires</span><span class="v">${fmtDate(cfCert.ssl_detail.expires_on)} · renews automatically</span>` : '')}
             ${st.issuer ? `<span class="k">Issuer</span><span class="v">${esc(st.issuer)}${st.staging ? ' — staging (not trusted by browsers)' : ''}</span>` : ''}
             <span class="k">Domains</span><span class="v">${domains.length ? domains.map(esc).join(', ') : '<span style="color:var(--warn)">none — add a custom domain in Settings first</span>'}</span>
           </div>

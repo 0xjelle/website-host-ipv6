@@ -23,8 +23,10 @@ app.use('/api/cloudflare', require('./routes/cloudflare'));
 app.use('/api/status', require('./routes/status')); // public — no auth
 app.use('/api', require('./routes/admin'));
 
-// Public status page
+// Public status + legal pages
 app.get('/status', (req, res) => res.sendFile(path.join(config.root, 'public', 'status.html')));
+app.get('/terms', (req, res) => res.sendFile(path.join(config.root, 'public', 'terms.html')));
+app.get('/privacy', (req, res) => res.sendFile(path.join(config.root, 'public', 'privacy.html')));
 
 // Dashboard SPA. Serve the HTML/JS with no-cache so a deploy is picked up
 // immediately — otherwise a stale app.js (in the browser or a CDN in front)

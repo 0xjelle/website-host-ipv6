@@ -357,6 +357,7 @@
             : mode === 'register' ? `Already registered? <a href="#" id="swap">Sign in</a>`
             : `<a href="#" id="backlogin">Back to sign in</a>`}
         </p>
+        <p class="sub" style="text-align:center;font-size:.78rem;margin-top:.3rem"><a href="/terms" target="_blank">Terms</a> · <a href="/privacy" target="_blank">Privacy</a></p>
       </div></div>`;
       document.getElementById('swap')?.addEventListener('click', (e) => { e.preventDefault(); mode = mode === 'login' ? 'register' : 'login'; draw(); });
       document.getElementById('forgot')?.addEventListener('click', (e) => { e.preventDefault(); mode = 'forgot'; draw(); });
@@ -413,6 +414,7 @@
           ${nav('admin/system', '⚙', 'System')}
           ${nav('admin/activity', '≡', 'Activity log')}` : ''}
         <a class="nav-item" href="/status" target="_blank"><span class="ico">◉</span>Status page</a>
+        <a class="nav-item" href="/terms" target="_blank"><span class="ico">§</span>Terms &amp; Privacy</a>
         <div class="spacer"></div>
         <div class="userchip">
           <div class="avatar">${esc((me.name || '?')[0].toUpperCase())}</div>

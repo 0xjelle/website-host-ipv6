@@ -1,5 +1,5 @@
 // Supervises Node.js site processes: start, stop, restart, log capture.
-const { spawn, execFileSync } = require('child_process');
+const { spawn, execFile, execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { db, logActivity } = require('../db');
@@ -249,9 +249,11 @@ function stop(siteId) {
     }
     entry.child = null;
   }
-  // Remove any container for this site (covers container mode and cleans up if
-  // the mode was switched off). No-op when Docker isn't installed.
-  if (dockerBin()) { try { execFileSync('docker', ['rm', '-f', `hsite${siteId}`], { stdio: 'ignore' }); } catch { /* none */ } }
+  // Remove any container for this site — ASYNC (fire-and-forget): a synchronous
+  // `docker rm -f` on a running container blocks the whole event loop for
+  // seconds and made site deletion hang. start() re-removes synchronously right
+  // before `docker run`, so nothing races on this. No-op without Docker.
+  if (dockerBin()) execFile('docker', ['rm', '-f', `hsite${siteId}`], () => {});
   db.prepare('UPDATE sites SET app_pid = NULL WHERE id = ?').run(siteId);
 }
 

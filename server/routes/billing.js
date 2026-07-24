@@ -7,7 +7,12 @@ const billing = require('../services/billing');
 // be verified over the exact bytes Stripe sent) ─────────────────────────────
 function webhook(req, res) {
   const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from('');
-  if (!billing.verifyWebhook(raw, req.get('Stripe-Signature'))) {
+  const sig = req.get('Stripe-Signature');
+  if (!billing.verifyWebhook(raw, sig)) {
+    // Say why: a silently-rejected webhook looks exactly like one that never
+    // arrived, and the usual cause is the wrong signing secret (the Stripe CLI
+    // issues a different whsec_ than the dashboard endpoint).
+    console.error(`billing webhook rejected: ${billing.webhookProblem(raw, sig)}`);
     return res.status(400).json({ error: 'bad signature' });
   }
   let ev;
@@ -113,6 +118,26 @@ router.get('/', (req, res) => {
 router.post('/checkout', async (req, res) => {
   try { res.json({ url: await billing.createCheckout(req.user) }); }
   catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Pull the subscription straight from Stripe. Makes billing work without a
+// webhook (the panel often isn't publicly reachable) and recovers from a missed
+// event. Also keeps the billed quantity in step with the real site count.
+router.post('/sync', async (req, res) => {
+  if (!billing.configured()) return res.status(400).json({ error: 'Billing is not configured on this server' });
+  const u = db.prepare('SELECT bill_customer_id FROM users WHERE id = ?').get(req.user.id);
+  try {
+    const sub = await billing.findSubscriptionFor(req.user, u.bill_customer_id);
+    if (!sub) return res.json({ ok: true, found: false });
+    saveSubscription(req.user.id, sub);
+    const item = sub.items && sub.items.data && sub.items.data[0];
+    const n = db.prepare('SELECT COUNT(*) AS n FROM sites WHERE user_id = ?').get(req.user.id).n;
+    if (item && billing.subscribed({ bill_subscription_id: sub.id, bill_status: sub.status }) && n >= 1 && item.quantity !== n) {
+      await billing.setQuantity(item.id, n).catch(() => {});
+    }
+    logActivity(req.user.id, 'billing.sync', `${sub.status}`);
+    res.json({ ok: true, found: true, status: sub.status });
+  } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
 router.post('/portal', async (req, res) => {

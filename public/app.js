@@ -1795,20 +1795,41 @@
       history.replaceState(null, '', '#/billing');
     }
     let waited = 0;
-    const load = () => api('/billing').then((b) => {
-      if (justPaid && !b.subscribed && waited < 20000) {
-        box().classList.add('empty');
-        box().textContent = 'Confirming your subscription with Stripe…';
-        waited += 1500;
-        setTimeout(load, 1500);
-        return;
-      }
-      if (justPaid && b.subscribed) {
-        toast('Subscription active - you can create your sites now 🎉', 'ok');
-        history.replaceState(null, '', '#/billing');
-      }
-      render(b);
-    }).catch(e => cardError(box(), e.message || 'Could not load billing', load));
+    const load = async () => {
+      try {
+        let b = await api('/billing');
+        // Don't rely on the webhook: ask the server to read the subscription
+        // straight from Stripe. Works even when Stripe can't reach this panel.
+        if (justPaid && !b.subscribed) {
+          await api('/billing/sync', { method: 'POST' }).catch(() => {});
+          b = await api('/billing');
+        }
+        if (justPaid && !b.subscribed && waited < 15000) {
+          const el = box(); el.classList.add('empty');
+          el.textContent = 'Confirming your subscription with Stripe…';
+          waited += 2000;
+          setTimeout(load, 2000);
+          return;
+        }
+        if (justPaid && b.subscribed) {
+          toast('Subscription active - you can create your sites now 🎉', 'ok');
+          history.replaceState(null, '', '#/billing');
+          justPaid = false;
+        } else if (justPaid) {
+          // Payment went through but we still can't see it. Say so plainly -
+          // showing a bare "Subscribe" button here invites paying twice.
+          justPaid = false;
+          history.replaceState(null, '', '#/billing');
+          const el = box(); el.classList.remove('empty');
+          el.innerHTML = `<div class="first-user-banner" style="border-color:rgba(255,201,120,.3);background:rgba(255,201,120,.1);color:#ffd9a3">
+            ⚠ <b>We couldn't confirm your subscription yet.</b> If you completed the payment, <b>do not pay again</b> - it may just need a moment.
+            <div style="margin-top:.7rem"><button class="btn" id="retry">Check again</button></div></div>`;
+          el.querySelector('#retry').addEventListener('click', () => { justPaid = true; waited = 0; load(); });
+          return;
+        }
+        render(b);
+      } catch (e) { cardError(box(), e.message || 'Could not load billing', load); }
+    };
     const render = (b) => {
       const el = box(); el.classList.remove('empty');
       if (!b.configured) {
@@ -1845,8 +1866,17 @@
         ${b.status ? `<p style="color:var(--warn);font-size:.88rem">Your subscription is <b>${esc(b.status)}</b> - resubscribe below to keep hosting sites.</p>` : ''}
         <div style="display:flex;gap:.6rem;flex-wrap:wrap">
           <button class="btn primary" id="sub">Subscribe</button>
+          <button class="btn" id="sync" title="Already paid? Fetch your subscription from Stripe.">↻ Already paid?</button>
           ${b.has_customer ? `<button class="btn" id="portal">Billing history</button>` : ''}
         </div>`;
+      el.querySelector('#sync').addEventListener('click', async (e) => {
+        e.target.disabled = true; e.target.textContent = 'Checking…';
+        try {
+          const r = await api('/billing/sync', { method: 'POST' });
+          toast(r.found ? `Found a subscription (${r.status}).` : 'No subscription found for your account yet.', r.found ? 'ok' : '');
+        } catch (err) { oops(err); }
+        load();
+      });
       el.querySelector('#sub').addEventListener('click', async (e) => {
         e.target.disabled = true;
         try { const r = await api('/billing/checkout', { method: 'POST' }); location.href = r.url; }

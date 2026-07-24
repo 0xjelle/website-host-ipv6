@@ -153,6 +153,19 @@ function verifyWebhook(rawBody, header, toleranceSec = 300) {
   });
 }
 
+// Explains a failed webhook verification, for the log. Never prints secrets.
+function webhookProblem(rawBody, header) {
+  if (!process.env.STRIPE_WEBHOOK_SECRET) return 'STRIPE_WEBHOOK_SECRET is not set';
+  if (!header) return 'request had no Stripe-Signature header (is something else posting to this URL?)';
+  const parts = {};
+  for (const kv of String(header).split(',')) { const [k, v] = kv.split('='); if (k) parts[k.trim()] = v; }
+  if (!parts.t || !parts.v1) return 'Stripe-Signature header was malformed';
+  const age = Math.floor(Date.now() / 1000) - Number(parts.t);
+  if (Math.abs(age) > 300) return `event timestamp is ${age}s away from this server's clock (>300s) - check the system time`;
+  return 'signature did not match STRIPE_WEBHOOK_SECRET - if you are using `stripe listen`, '
+    + 'use the whsec_ it printed, not the one from the dashboard endpoint';
+}
+
 // ── operations ──────────────────────────────────────────────────────
 const dashUrl = () => `http://${config.publicHost}:${config.adminPort}`;
 
@@ -234,6 +247,29 @@ async function setQuantity(itemId, quantity) {
 // Fetch a subscription (used to resolve the item id after checkout).
 function getSubscription(id) { return api('GET', `/subscriptions/${id}`); }
 
+// Look up a user's subscription directly, so billing state can be recovered
+// without a webhook (useful when the panel isn't publicly reachable, or if an
+// event was missed). Prefers a stored customer id, else matches on email.
+async function findSubscriptionFor(user, storedCustomerId) {
+  if (!configured()) throw new Error('Billing is not configured on this server');
+  let customerId = storedCustomerId || null;
+  if (!customerId) {
+    const found = await api('GET', `/customers?email=${encodeURIComponent(user.email)}&limit=10`);
+    const candidates = found.data || [];
+    if (!candidates.length) return null;
+    customerId = candidates[0].id;
+  }
+  const subs = await api('GET', `/subscriptions?customer=${encodeURIComponent(customerId)}&status=all&limit=20`);
+  const all = subs.data || [];
+  if (!all.length) return null;
+  const LIVE = ['active', 'trialing', 'past_due'];
+  // Prefer a live subscription that we know belongs to this account, then any
+  // live one, then the most recent (so a cancelled state is reported too).
+  return all.find((s) => LIVE.includes(s.status) && s.metadata && String(s.metadata.user_id) === String(user.id))
+    || all.find((s) => LIVE.includes(s.status))
+    || all[0];
+}
+
 // Resolve the configured id to a usable price id. A product id is turned into
 // its default price, falling back to its single active recurring price.
 // Cached after the first successful lookup.
@@ -262,4 +298,4 @@ async function resolvePrice() {
   return priceId;
 }
 
-module.exports = { PER_SITE, ANCHOR_DAY, keyInfo, configured, subscribed, verifyWebhook, createCheckout, portalUrl, setQuantity, getSubscription, nextAnchor, resolvePrice };
+module.exports = { PER_SITE, ANCHOR_DAY, keyInfo, webhookProblem, findSubscriptionFor, configured, subscribed, verifyWebhook, createCheckout, portalUrl, setQuantity, getSubscription, nextAnchor, resolvePrice };

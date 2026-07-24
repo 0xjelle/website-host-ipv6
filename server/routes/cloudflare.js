@@ -4,6 +4,7 @@ const { requireAuth, requireAdmin } = require('../auth');
 const config = require('../config');
 const cf = require('../services/cloudflare');
 const saas = require('../services/cfsaas');
+const ipam = require('../services/ipam');
 
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
@@ -78,6 +79,14 @@ router.patch('/saas', async (req, res) => {
   const c = saas.getConfig();
   if (c.enabled && c.token && c.zoneId && c.fallbackOrigin) {
     if (c.originIp) {
+      // Attach the origin address to this box now (and on every boot via
+      // ipam.applyAll) so the fallback origin stays reachable across reboots.
+      await new Promise((resolve) => ipam.applyFallbackOrigin((r) => {
+        if (r.applied && r.local === false) notes.push(`Attached ${c.originIp} but it has no local route - traffic to it may not arrive.`);
+        else if (!r.applied && r.skipped) notes.push(`Origin address not attached: ${r.skipped}.`);
+        else if (!r.applied && r.reason) notes.push(`Could not attach ${c.originIp}: ${r.reason}`);
+        resolve();
+      }));
       try { const r = await saas.ensureFallbackOriginRecord(); if (r.ok) notes.push(`Fallback-origin DNS record ${r.action} (${r.type}, proxied).`); }
       catch (e) { notes.push(`Could not create the fallback-origin DNS record: ${e.message}`); }
     } else {

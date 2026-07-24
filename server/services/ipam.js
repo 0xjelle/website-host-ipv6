@@ -3,7 +3,7 @@
 // that is routed to this server), attaches it to a network interface, and
 // lets the edge proxy route by destination address.
 const { execFile } = require('child_process');
-const { db, logActivity } = require('../db');
+const { db, logActivity, getSetting } = require('../db');
 
 // ── address math ────────────────────────────────────────────────────
 function normalizeV6(addr) {
@@ -78,10 +78,23 @@ function detectIface(cb) {
   });
 }
 
+// Attach an address to the interface. `nodad` is REQUIRED: once the block is
+// announced over BGP, Duplicate Address Detection sees the prefix answered
+// upstream, marks the new address dadfailed and the kernel then installs no
+// `local` route for it - so the address exists but nothing can reach it ("No
+// route to host", even from this box). Skipping DAD is correct here because the
+// prefix is ours by construction.
 function applyAddr(addr, cb = () => {}) {
   detectIface((iface) => {
-    execFile('ip', ['-6', 'addr', 'replace', `${addr}/128`, 'dev', iface], (err) => {
-      cb(err ? { applied: false, reason: `ip addr failed on ${iface}: ${err.message.split('\n')[0]}` } : { applied: true, iface });
+    execFile('ip', ['-6', 'addr', 'replace', `${addr}/128`, 'dev', iface, 'nodad'], (err) => {
+      if (err) return cb({ applied: false, reason: `ip addr failed on ${iface}: ${err.message.split('\n')[0]}` });
+      // Verify the kernel really treats it as local; a silent failure here means
+      // traffic to this address is black-holed, so it's worth surfacing.
+      execFile('ip', ['-6', 'route', 'get', addr], (rerr, out) => {
+        const local = !rerr && /\blocal\b/.test(out || '');
+        if (!local) console.error(`ipam: ${addr} attached to ${iface} but has no local route - traffic to it will not arrive`);
+        cb({ applied: true, iface, local });
+      });
     });
   });
 }
@@ -113,11 +126,38 @@ function backfill() {
   return n;
 }
 
+// The Cloudflare-for-SaaS fallback origin (Administration -> Cloudflare -> Origin
+// IP) is the single address every customer custom domain routes to. It lives on
+// this box like a site address, but isn't tied to any one site - so nothing used
+// to re-attach it and a reboot silently took every custom domain offline. Bind
+// it here on every boot.
+//
+// Only IPv6 is auto-bound: an IPv4 in that field is almost always a NAT/router
+// address (or the operator's home IP), and attaching that to our interface would
+// break routing rather than help.
+function applyFallbackOrigin(cb = () => {}) {
+  const raw = (getSetting('cf_origin_ip', '') || '').trim();
+  if (!raw) return cb({ applied: false, skipped: 'no origin IP configured' });
+  if (!raw.includes(':')) {
+    return cb({ applied: false, skipped: `origin IP ${raw} is IPv4 - not auto-attached` });
+  }
+  const norm = normalizeV6(raw);
+  if (!norm || /^fe80:/i.test(raw) || raw === '::1') {
+    return cb({ applied: false, skipped: `origin IP ${raw} is not a usable global IPv6` });
+  }
+  applyAddr(raw, (r) => {
+    if (r.applied) console.log(`⬡ Cloudflare fallback origin ${raw} attached to ${r.iface}`);
+    else console.error(`ipam: could not attach fallback origin ${raw}: ${r.reason}`);
+    cb(r);
+  });
+}
+
 // Re-attach all assigned addresses (on boot)
 function applyAll() {
   for (const s of db.prepare('SELECT ipv6_addr FROM sites WHERE ipv6_addr IS NOT NULL').all()) {
     applyAddr(s.ipv6_addr);
   }
+  applyFallbackOrigin(); // survives reboots: keeps custom domains reachable
 }
 
-module.exports = { normalizeV6, getPool, nextAddr, assignToSite, backfill, applyAll, applyAddr, removeAddr };
+module.exports = { normalizeV6, getPool, nextAddr, assignToSite, backfill, applyAll, applyAddr, removeAddr, applyFallbackOrigin };

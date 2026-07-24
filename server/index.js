@@ -53,7 +53,7 @@ app.use((err, req, res, next) => {
 wg.getSettings();                        // ensure server keys exist
 wg.syncToDisk();                         // write wg0.conf
 require('./services/bird').writeConf();  // write bird.conf (BGP over tunnel)
-require('./services/ipam').applyAll();   // re-attach dedicated site IPv6 addresses
+require('./services/ipam').applyAll();   // re-attach site IPv6 addresses + the Cloudflare fallback origin
 require('./services/uplink').applyBoot(); // reconnect provider BGP tunnel if configured
 require('./services/metrics').start();    // system + traffic sampling for charts
 require('./services/sftp').start();       // built-in SFTP server for file uploads

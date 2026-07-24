@@ -693,7 +693,7 @@
             ${site.ipv6_addr ? `<span class="k">Dedicated IPv6</span><span class="v">${esc(site.ipv6_addr)}
               <button class="cp" style="background:none;border:none;cursor:pointer;color:var(--ink-3)" onclick="_copy('${esc(site.ipv6_addr)}', 'IPv6 copied')" title="copy">⧉</button>
               <span style="color:var(--ink-3)"> — point your AAAA records here</span></span>` : ''}
-            ${domains.map(d => `<span class="k">Custom domain</span><span class="v"><a href="http://${esc(d)}" target="_blank">http://${esc(d)}</a></span>`).join('')}
+            ${domains.map(d => `<span class="k">Custom domain</span><span class="v"><a href="http://${esc(d)}" target="_blank">http://${esc(d)}</a> <span class="cf-stat" data-host="${esc(String(d).toLowerCase())}"></span></span>`).join('')}
             ${site.type === 'node' ? `<span class="k">Internal port</span><span class="v">${site.app_port} ${site.process?.running ? `· running ${uptimeStr(site.process.uptimeSec)}` : '· not running'}</span>` : ''}
           </div>
         </div>
@@ -728,12 +728,18 @@
 
     const body = main.querySelector('#tabbody');
 
-    // Prominent CNAME banner at the top while any custom domain isn't live yet.
+    // Cloudflare status: fill the pill next to each custom domain in the Access
+    // card, and show a prominent CNAME banner while any domain isn't live yet.
     api(`/sites/${id}/domains/cf`).then(cf => {
       if (!cf.enabled) return;
+      const byHost = {};
+      (cf.hostnames || []).forEach(hn => { byHost[String(hn.hostname || '').toLowerCase()] = hn; });
+      main.querySelectorAll('.cf-stat').forEach(el => {
+        const hn = byHost[el.dataset.host];
+        if (hn) el.innerHTML = cfStatusPill(hn);
+      });
       const pending = (cf.hostnames || []).filter(hn => !hn.active);
-      if (!pending.length) return;
-      main.querySelector('.page-head')?.insertAdjacentElement('afterend', h(cfBannerHtml(pending, cf.fallback_origin)));
+      if (pending.length) main.querySelector('.page-head')?.insertAdjacentElement('afterend', h(cfBannerHtml(pending, cf.fallback_origin)));
     }).catch(() => {});
 
     if (tab === 'deploys') {

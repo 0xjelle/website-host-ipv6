@@ -6,6 +6,9 @@ const config = require('../config');
 const { db, logActivity } = require('../db');
 const procman = require('./procman');
 const gh = require('./github');
+const mail = require('./mail');
+
+const escHtml = (s) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
 const running = new Set(); // site ids with an in-flight deploy
 
@@ -88,6 +91,18 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
       .run(ok ? 'success' : 'failed', depId);
     db.prepare('UPDATE sites SET status = ? WHERE id = ?').run(ok ? 'live' : 'failed', siteId);
     logActivity(site.user_id, ok ? 'deploy.success' : 'deploy.failed', `"${site.name}" (${trigger})`);
+    if (!ok) {
+      try {
+        const u = db.prepare('SELECT email FROM users WHERE id = ?').get(site.user_id);
+        if (u?.email) mail.send({
+          to: u.email,
+          subject: `Deploy failed: ${site.name}`,
+          text: `Your deployment of "${site.name}" failed: ${msg}\nLogs: ${dashUrl}`,
+          html: mail.shell('Deploy failed', `<p>Your deployment of <b>${escHtml(site.name)}</b> failed:</p>
+            <p style="color:#b00">${escHtml(msg)}</p><p><a href="${dashUrl}">View the deploy log</a></p>`),
+        }).catch(() => {});
+      } catch { /* never let notification break deploy */ }
+    }
     const token = ghToken(), full = ghRepo();
     if (fullSha && token && full) {
       gh.setCommitStatus(token, full, fullSha, ok ? 'success' : 'failure', msg, ok ? siteUrl() : dashUrl);

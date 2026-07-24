@@ -327,30 +327,52 @@
   }
 
   // ── auth screens ────────────────────────────────────────────────
-  function renderAuth(hasUsers) {
-    let mode = hasUsers ? 'login' : 'register';
+  function renderAuth(hasUsers, resetToken) {
+    let mode = resetToken ? 'reset' : (hasUsers ? 'login' : 'register');
+    const TITLE = { login: 'Welcome back', register: 'Create your account', forgot: 'Reset your password', reset: 'Choose a new password' };
+    const SUB = {
+      login: 'Sign in to your hosting console.',
+      register: 'Host sites, connect GitHub, tunnel your IPv6 space.',
+      forgot: 'Enter your email and we will send you a reset link.',
+      reset: 'Enter a new password for your account.',
+    };
+    const BTN = { login: 'Sign in', register: 'Create account', forgot: 'Send reset link', reset: 'Update password' };
     const draw = () => {
       $app.innerHTML = `
       <div class="auth-wrap"><div class="auth-card">
         <div class="logo"><span class="hex">⬡</span> Hosting</div>
         ${mode === 'register' && !hasUsers ? `<div class="first-user-banner" style="margin-top:1.2rem">✨ You're the first user — this account becomes the <b>administrator</b>.</div>` : ''}
-        <h1>${mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
-        <p class="sub">${mode === 'login' ? 'Sign in to your hosting console.' : 'Host sites, connect GitHub, tunnel your IPv6 space.'}</p>
+        <h1>${TITLE[mode]}</h1>
+        <p class="sub">${SUB[mode]}</p>
         <form id="authform">
           ${mode === 'register' ? `<label class="field"><span class="lbl">Name</span><input type="text" name="name" required placeholder="Jelle"></label>` : ''}
-          <label class="field"><span class="lbl">Email</span><input type="email" name="email" required placeholder="you@example.com"></label>
-          <label class="field"><span class="lbl">Password</span><input type="password" name="password" required minlength="${mode === 'register' ? 8 : 1}" placeholder="••••••••"></label>
-          <button class="btn primary block" type="submit">${mode === 'login' ? 'Sign in' : 'Create account'}</button>
+          ${mode === 'reset' ? '' : `<label class="field"><span class="lbl">Email</span><input type="email" name="email" required placeholder="you@example.com"></label>`}
+          ${mode === 'forgot' ? '' : `<label class="field"><span class="lbl">${mode === 'reset' ? 'New password' : 'Password'}</span><input type="password" name="password" required minlength="${mode === 'register' || mode === 'reset' ? 8 : 1}" placeholder="••••••••"></label>`}
+          <button class="btn primary block" type="submit">${BTN[mode]}</button>
         </form>
         <p class="sub" style="margin-top:1.1rem;text-align:center">
-          ${mode === 'login' ? `No account yet? <a href="#" id="swap">Register</a>` : `Already registered? <a href="#" id="swap">Sign in</a>`}
+          ${mode === 'login' ? `<a href="#" id="forgot">Forgot password?</a> · No account yet? <a href="#" id="swap">Register</a>`
+            : mode === 'register' ? `Already registered? <a href="#" id="swap">Sign in</a>`
+            : `<a href="#" id="backlogin">Back to sign in</a>`}
         </p>
       </div></div>`;
       document.getElementById('swap')?.addEventListener('click', (e) => { e.preventDefault(); mode = mode === 'login' ? 'register' : 'login'; draw(); });
+      document.getElementById('forgot')?.addEventListener('click', (e) => { e.preventDefault(); mode = 'forgot'; draw(); });
+      document.getElementById('backlogin')?.addEventListener('click', (e) => { e.preventDefault(); mode = 'login'; resetToken = null; location.hash = ''; draw(); });
       document.getElementById('authform').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = Object.fromEntries(new FormData(e.target));
         try {
+          if (mode === 'forgot') {
+            const r = await api('/auth/forgot', { method: 'POST', body: { email: fd.email } });
+            toast(r.mail_configured ? 'If that email exists, a reset link is on its way.' : 'Email is not set up on this server — ask the admin to configure it.', r.mail_configured ? 'ok' : '');
+            mode = 'login'; draw(); return;
+          }
+          if (mode === 'reset') {
+            await api('/auth/reset', { method: 'POST', body: { token: resetToken, password: fd.password } });
+            toast('Password updated — you can sign in now.', 'ok');
+            mode = 'login'; resetToken = null; location.hash = ''; draw(); return;
+          }
           const r = await api(`/auth/${mode}`, { method: 'POST', body: fd });
           me = r.user;
           if (r.firstUser) toast('Welcome, admin! Your console is ready.', 'ok');
@@ -1711,6 +1733,12 @@
 
   // ── router ──────────────────────────────────────────────────────
   async function render() {
+    // A password-reset link always shows the reset form, logged in or not.
+    const resetMatch = location.hash.match(/^#\/reset\/([a-f0-9]{16,})/i);
+    if (resetMatch) {
+      const { hasUsers } = await api('/auth/setup-state').catch(() => ({ hasUsers: true }));
+      return renderAuth(hasUsers, resetMatch[1]);
+    }
     if (!me) {
       try { const r = await api('/auth/me'); me = r.user; }
       catch {

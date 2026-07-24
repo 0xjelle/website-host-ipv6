@@ -12,6 +12,7 @@ const { db, logActivity } = require('../db');
 
 let acme;
 try { acme = require('acme-client'); } catch { acme = null; }
+const mail = require('./mail');
 
 const acmeDir = path.join(config.dataDir, 'acme');
 const certsDir = path.join(config.dataDir, 'certs');
@@ -172,6 +173,14 @@ async function checkRenewals() {
     try {
       await request(site, JSON.parse(site.domains || '[]'), user?.email);
       logActivity(site.user_id, 'ssl.renew.staged', `"${site.name}" expires in ${st.daysLeft}d — new TXT records ready to verify`);
+      const dash = `http://${config.publicHost}:${config.adminPort}/#/sites/${site.id}`;
+      if (user?.email) mail.send({
+        to: user.email,
+        subject: `Certificate expiring for ${site.name} (${st.daysLeft}d)`,
+        text: `The certificate for "${site.name}" expires in ${st.daysLeft} days. New DNS TXT records are staged — add them and click Verify: ${dash}`,
+        html: mail.shell('Certificate expiring soon', `<p>The Let's Encrypt certificate for <b>${String(site.name).replace(/[&<>]/g, '')}</b> expires in <b>${st.daysLeft} days</b>.</p>
+          <p>New DNS TXT records are staged. <a href="${dash}">Open the SSL tab</a>, add them, then click <b>Verify &amp; issue</b>.</p>`),
+      }).catch(() => {});
     } catch (e) {
       upsert(row.site_id, { last_error: `auto-renew: ${e.message}` });
     }

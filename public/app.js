@@ -1095,7 +1095,9 @@
       });
 
       // ── Cloudflare-for-SaaS routing for this site's custom domains ──
-      const cfCard = h(`<div class="card"><h2>Custom domain routing <span class="hint">Cloudflare</span></h2><div id="cfbody" class="empty">Loading…</div></div>`);
+      // .firstElementChild: h() returns a DocumentFragment that empties on
+      // append, so keep a live reference to the actual card element.
+      const cfCard = h(`<div class="card"><h2>Custom domain routing <span class="hint">Cloudflare</span></h2><div id="cfbody" class="empty">Loading…</div></div>`).firstElementChild;
       body.appendChild(cfCard);
       const renderCf = (d) => {
         const box = cfCard.querySelector('#cfbody');
@@ -1125,7 +1127,7 @@
       loadCf();
 
       // ── Custom 404 page ──
-      const nf = h(`<div class="card"><h2>Custom 404 page <span class="hint">served when a page isn't found</span></h2><div id="nfbody" class="empty">Loading…</div></div>`);
+      const nf = h(`<div class="card"><h2>Custom 404 page <span class="hint">served when a page isn't found</span></h2><div id="nfbody" class="empty">Loading…</div></div>`).firstElementChild;
       body.appendChild(nf);
       const loadNf = () => { const b = nf.querySelector('#nfbody'); b.textContent = 'Loading…'; b.className = 'empty';
       api(`/sites/${id}/notfound`).then(({ html }) => {

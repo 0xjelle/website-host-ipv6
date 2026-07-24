@@ -69,7 +69,6 @@ function publicView(site) {
   return {
     ...rest,
     has_repo_token: !!repo_token,
-    has_404: !!not_found_html,
     domains: JSON.parse(site.domains || '[]'),
     env_vars: JSON.parse(site.env_vars || '{}'),
     default_domain: `${site.slug}.${config.siteBaseDomain}`,
@@ -297,22 +296,8 @@ router.post('/:id/domains/cf/sync', async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
-// ── Custom 404 page ─────────────────────────────────────────────────
-router.get('/:id/notfound', (req, res) => {
-  const site = ownSite(req, res);
-  if (!site) return;
-  res.json({ html: site.not_found_html || '' });
-});
-
-router.put('/:id/notfound', (req, res) => {
-  const site = ownSite(req, res);
-  if (!site) return;
-  const html = req.body && typeof req.body.html === 'string' ? req.body.html : '';
-  if (html.length > 512 * 1024) return res.status(400).json({ error: 'Custom 404 page is too large (max 512 KB)' });
-  db.prepare('UPDATE sites SET not_found_html = ? WHERE id = ?').run(html || null, site.id);
-  logActivity(req.user.id, 'site.notfound', `"${site.name}" ${html ? 'set' : 'cleared'}`);
-  res.json({ ok: true, has_404: !!html });
-});
+// Custom 404: no API — the edge proxy serves a 404.html straight from the
+// site's directory if the site ships one (see services/proxy notFound()).
 
 // ── SSL (Let's Encrypt, DNS-01) ─────────────────────────────────────
 const acme = require('../services/acme');

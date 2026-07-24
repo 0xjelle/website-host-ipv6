@@ -124,13 +124,16 @@ font-family:system-ui,sans-serif;background:#0b0e14;color:#e6e9f0}
 <body><div class="card"><h1>${code}</h1><h2>${title}</h2><p>${message}</p></div></body></html>`);
 }
 
-// 404 for a matched site: serve the operator's custom 404 page if they set one,
-// otherwise the default styled error page.
-function notFound(site, res) {
-  if (site && site.not_found_html) {
-    const body = Buffer.from(site.not_found_html);
-    res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': body.length });
-    return res.end(body);
+// 404 for a matched site: if the site ships its own 404.html in its served
+// directory, use that; otherwise the default styled error page.
+function notFound(res, workDir) {
+  const custom = workDir && path.join(workDir, '404.html');
+  if (custom && fs.existsSync(custom)) {
+    try {
+      const stat = fs.statSync(custom);
+      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': stat.size });
+      return fs.createReadStream(custom).pipe(res);
+    } catch { /* fall through to default */ }
   }
   return errorPage(res, 404, 'Not found', 'This page does not exist on this site.');
 }
@@ -156,7 +159,7 @@ function serveStatic(site, req, res) {
       const fallback = path.join(workDir, 'index.html');
       if (fs.existsSync(fallback)) { filePath = fallback; stat = fs.statSync(fallback); }
     }
-    if (!stat) return notFound(site, res);
+    if (!stat) return notFound(res, workDir);
   }
   const ext = path.extname(filePath).toLowerCase();
   res.writeHead(200, {

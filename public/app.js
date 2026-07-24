@@ -97,7 +97,7 @@
   }
   function cfStatusPill(hn) {
     return hn.active
-      ? '<span class="pill live"><span class="dot"></span>active — protected by Cloudflare</span>'
+      ? '<span class="pill live"><span class="dot"></span>active</span>'
       : (hn.last_error ? '<span class="pill failed">error</span>' : `<span class="pill queued"><span class="dot"></span>${esc(hn.status || 'pending')}${hn.ssl_status ? ` · ssl ${esc(hn.ssl_status)}` : ''}</span>`);
   }
 
@@ -1125,38 +1125,8 @@
       };
       const loadCf = () => { cfCard.querySelector('#cfbody').textContent = 'Loading…'; api(`/sites/${id}/domains/cf`).then(renderCf).catch((e) => cardError(cfCard.querySelector('#cfbody'), e.message || 'Could not load Cloudflare routing status.', loadCf)); };
       loadCf();
-
-      // ── Custom 404 page ──
-      const nf = h(`<div class="card"><h2>Custom 404 page <span class="hint">served when a page isn't found</span></h2><div id="nfbody" class="empty">Loading…</div></div>`).firstElementChild;
-      body.appendChild(nf);
-      const loadNf = () => { const b = nf.querySelector('#nfbody'); b.textContent = 'Loading…'; b.className = 'empty';
-      api(`/sites/${id}/notfound`).then(({ html }) => {
-        const box = nf.querySelector('#nfbody');
-        box.classList.remove('empty');
-        box.innerHTML = `
-          <p style="color:var(--ink-2);font-size:.9rem;margin:.2rem 0 .6rem">Upload an HTML file or paste markup — it's served (with a 404 status) for any path that doesn't exist. Stored in the platform, so it survives redeploys.</p>
-          <input type="file" id="nffile" accept=".html,text/html" style="margin-bottom:.6rem">
-          <textarea id="nfhtml" rows="6" class="mono" style="width:100%;box-sizing:border-box" placeholder="<!doctype html><title>Not found</title>…">${esc(html || '')}</textarea>
-          <div style="display:flex;gap:.6rem;margin-top:.6rem">
-            <button class="btn primary" id="nfsave">Save 404 page</button>
-            ${html ? '<button class="btn danger" id="nfclear">Remove</button>' : ''}
-          </div>`;
-        const ta = box.querySelector('#nfhtml');
-        box.querySelector('#nffile')?.addEventListener('change', (e) => {
-          const f = e.target.files[0]; if (!f) return;
-          const r = new FileReader(); r.onload = () => { ta.value = r.result; }; r.readAsText(f);
-        });
-        box.querySelector('#nfsave').addEventListener('click', async (e) => {
-          e.target.disabled = true;
-          try { await api(`/sites/${id}/notfound`, { method: 'PUT', body: { html: ta.value } }); toast('Custom 404 page saved', 'ok'); pageSiteDetail(id, 'settings'); }
-          catch (err) { oops(err); e.target.disabled = false; }
-        });
-        box.querySelector('#nfclear')?.addEventListener('click', async () => {
-          try { await api(`/sites/${id}/notfound`, { method: 'PUT', body: { html: '' } }); toast('Custom 404 page removed', 'ok'); pageSiteDetail(id, 'settings'); }
-          catch (err) { oops(err); }
-        });
-      }).catch((e) => cardError(nf.querySelector('#nfbody'), e.message || 'Could not load the custom 404 page.', loadNf)); };
-      loadNf();
+      // Custom 404: no UI — the edge proxy automatically serves a 404.html from
+      // the site's directory if the site ships one.
     }
   }
 

@@ -9,7 +9,7 @@ const wg = require('./services/wireguard');
 const app = express();
 app.disable('x-powered-by');
 
-// Webhooks need the raw body for signature verification — mount before json()
+// Webhooks need the raw body for signature verification - mount before json()
 app.use('/api/webhooks', require('./routes/webhooks'));
 app.post('/api/billing/webhook', express.raw({ type: '*/*' }), require('./routes/billing').webhook);
 
@@ -22,7 +22,7 @@ app.use('/api/github', require('./routes/github'));
 app.use('/api/certs', require('./routes/certs'));
 app.use('/api/cloudflare', require('./routes/cloudflare'));
 app.use('/api/billing', require('./routes/billing').router);
-app.use('/api/status', require('./routes/status')); // public — no auth
+app.use('/api/status', require('./routes/status')); // public - no auth
 app.use('/api', require('./routes/admin'));
 
 // Public status + legal pages
@@ -31,7 +31,7 @@ app.get('/terms', (req, res) => res.sendFile(path.join(config.root, 'public', 't
 app.get('/privacy', (req, res) => res.sendFile(path.join(config.root, 'public', 'privacy.html')));
 
 // Dashboard SPA. Serve the HTML/JS with no-cache so a deploy is picked up
-// immediately — otherwise a stale app.js (in the browser or a CDN in front)
+// immediately - otherwise a stale app.js (in the browser or a CDN in front)
 // keeps running old frontend code after an update.
 app.use(express.static(path.join(config.root, 'public'), {
   setHeaders: (res, filePath) => {

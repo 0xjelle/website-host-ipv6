@@ -1,5 +1,5 @@
 // Cloudflare Turnstile (CAPTCHA) verification. Enforced on login/register only
-// when both keys are set — otherwise auth works normally, so it can never lock
+// when both keys are set - otherwise auth works normally, so it can never lock
 // you out just because it's unconfigured.
 const https = require('https');
 

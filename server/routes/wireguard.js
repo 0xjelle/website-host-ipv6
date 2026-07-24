@@ -115,7 +115,7 @@ router.post('/peers/:id/bgp', (req, res) => {
 
   if (enable && !peer.asn) return res.status(400).json({ error: 'Set an ASN on this peer first (edit the peer)' });
   if (enable && !peer.routed_v6 && !peer.routed_v4) {
-    return res.status(400).json({ error: 'Add a routed IPv6 or IPv4 prefix to this peer first — that is what the BGP session will accept' });
+    return res.status(400).json({ error: 'Add a routed IPv6 or IPv4 prefix to this peer first - that is what the BGP session will accept' });
   }
 
   const save = (validation) => {

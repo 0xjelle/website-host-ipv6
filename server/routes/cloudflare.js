@@ -8,7 +8,7 @@ const saas = require('../services/cfsaas');
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
 
-// A bare IP or an .sslip.io address can't be put behind Cloudflare — Cloudflare
+// A bare IP or an .sslip.io address can't be put behind Cloudflare - Cloudflare
 // only proxies real domains. Surface that so the dashboard can warn the admin.
 function looksLikeRealDomain(h) {
   h = String(h || '').toLowerCase();

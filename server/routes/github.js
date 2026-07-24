@@ -1,6 +1,6 @@
 // Account-level GitHub connection: store one token per user (encrypted),
 // browse their repos, and use it to clone private repos + auto-create
-// webhooks — so repositories never need to be public.
+// webhooks - so repositories never need to be public.
 const express = require('express');
 const { db, logActivity } = require('../db');
 const { requireAuth } = require('../auth');

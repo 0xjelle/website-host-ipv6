@@ -27,10 +27,10 @@ const MIME = {
 };
 
 // Match an incoming request to a site, reporting *how* it matched:
-//   'free'   — the free per-site link (<slug>.<base>, e.g. <slug>.<ip>.sslip.io,
+//   'free'   - the free per-site link (<slug>.<base>, e.g. <slug>.<ip>.sslip.io,
 //              or <slug>.<publicHost>)
-//   'custom' — a user-added custom domain
-//   'ipv6'   — the site's dedicated IPv6 address (connected-to address or Host)
+//   'custom' - a user-added custom domain
+//   'ipv6'   - the site's dedicated IPv6 address (connected-to address or Host)
 // The route matters for stopped sites: a stopped site stays reachable on its
 // free local link, but drops off its public custom domains + dedicated IPv6.
 function matchSite(req) {
@@ -197,7 +197,7 @@ function proxyToApp(site, req, res) {
   });
   upstream.on('error', () => {
     if (res.headersSent) return;
-    // A static site's container being down must never take the site offline —
+    // A static site's container being down must never take the site offline -
     // fall back to serving its files straight off disk.
     if (site.type === 'static') return serveStatic(site, req, res);
     errorPage(res, 502, 'App unavailable', 'The application is starting up or has crashed. Try again shortly.');
@@ -215,11 +215,11 @@ function handleRequest(req, res) {
   const { site } = match;
   // Stopped sites are served exactly like live ones on their free local link
   // (node apps keep running so you can test them; static files serve from
-  // disk) — isServable() has already kept them off their public routes.
+  // disk) - isServable() has already kept them off their public routes.
   metrics.hit(site.id);
   if (site.type === 'node') return proxyToApp(site, req, res);
   // Static: serve through its container when one is running; otherwise (or if
-  // containers are off) serve the files directly. This is also the safety net —
+  // containers are off) serve the files directly. This is also the safety net -
   // a static site never goes down just because its container isn't up.
   if (procman.useContainers() && site.app_port && procman.status(site.id).running) return proxyToApp(site, req, res);
   return serveStatic(site, req, res);

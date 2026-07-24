@@ -31,7 +31,7 @@ const siteDir = (id) => path.join(config.sitesDir, String(id), 'current');
 
 // Resolve a virtual path into what it represents.
 //  • jailed session (logged in as email+slug): "/" IS that one site's document
-//    root — the user never sees their other sites.
+//    root - the user never sees their other sites.
 //  • unjailed session (logged in as just the email): "/" lists their sites and
 //    "/slug/..." is a path inside a site.
 function resolve(userId, vpath, jail) {
@@ -83,7 +83,7 @@ function start() {
       if (ctx.method !== 'password') return ctx.reject(['password']);
       // Username may be "email+slug" to confine the session to a single site.
       // Split on the LAST '+' and only treat the suffix as a site if it looks
-      // like a slug — so plus-addressed emails (user+tag@x.com) still work.
+      // like a slug - so plus-addressed emails (user+tag@x.com) still work.
       let username = (ctx.username || '').trim();
       let wantSlug = null;
       const plus = username.lastIndexOf('+');

@@ -1,5 +1,5 @@
 // Transactional email via Resend (https, no dependency). When RESEND_API_KEY
-// isn't set it logs and no-ops, so the platform runs fine without email — the
+// isn't set it logs and no-ops, so the platform runs fine without email - the
 // features that use it (password reset, notifications) just stay dormant.
 const https = require('https');
 
@@ -15,7 +15,7 @@ function shell(title, bodyHtml) {
 
 function send({ to, subject, html, text }) {
   return new Promise((resolve) => {
-    if (!configured()) { console.log(`mail: skipped (no RESEND_API_KEY) — "${subject}" → ${to}`); return resolve(false); }
+    if (!configured()) { console.log(`mail: skipped (no RESEND_API_KEY) - "${subject}" → ${to}`); return resolve(false); }
     const payload = JSON.stringify({ from: from(), to: Array.isArray(to) ? to : [to], subject, html, text });
     const req = https.request({
       host: 'api.resend.com', path: '/emails', method: 'POST',

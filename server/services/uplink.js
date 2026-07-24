@@ -1,6 +1,6 @@
 // Uplink: connect this server OUT to a BGP tunnel provider (BGPTunnel/iFog,
 // Route48-style services, or your own upstream). The provider gives you two
-// files — a WireGuard client config and a BIRD config. We bring the tunnel
+// files - a WireGuard client config and a BIRD config. We bring the tunnel
 // up as a client (interface "uplink") and merge the useful parts of their
 // BIRD config into our managed bird.conf, so the server announces your
 // prefix from your ASN and receives your IPv6 space.

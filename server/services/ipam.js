@@ -10,7 +10,7 @@ function normalizeV6(addr) {
   if (!addr) return null;
   let a = String(addr).toLowerCase().split('%')[0].replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/, '$1');
   if (!a.includes(':')) {
-    // plain IPv4 — valid dotted quad or nothing
+    // plain IPv4 - valid dotted quad or nothing
     return /^\d{1,3}(\.\d{1,3}){3}$/.test(a) && a.split('.').every(o => +o <= 255) ? a : null;
   }
   const [l, r = ''] = a.split('::');

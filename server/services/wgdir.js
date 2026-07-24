@@ -22,7 +22,7 @@ function etcUsable() {
 }
 
 // Write an interface config so wg-quick (under AppArmor) can read it.
-// Returns { arg } — the argument to pass to wg-quick/wg: the bare
+// Returns { arg } - the argument to pass to wg-quick/wg: the bare
 // interface name when using /etc/wireguard, otherwise the full path.
 function writeIface(iface, contents) {
   // always keep a data-dir copy (downloads, fallback)

@@ -1,4 +1,4 @@
-// Let's Encrypt (ACME) certificates via the DNS-01 challenge — works for a
+// Let's Encrypt (ACME) certificates via the DNS-01 challenge - works for a
 // server with no inbound reachability (behind NAT). Two-step manual flow:
 //   1. request() creates the order and returns the _acme-challenge TXT
 //      records the operator must add to their DNS.
@@ -72,13 +72,13 @@ function upsert(siteId, fields) {
   db.prepare(`UPDATE certs SET ${sets}, updated_at = datetime('now') WHERE site_id = ?`).run(...Object.values(fields), siteId);
 }
 
-// Step 1 — create the order and return the TXT records to add.
+// Step 1 - create the order and return the TXT records to add.
 async function request(site, domains, email) {
   if (!acme) throw new Error('acme-client is not installed on this server');
   if (!domains.length) throw new Error('Add at least one custom domain to the site first');
   for (const d of domains) {
     if (/\.sslip\.io$/i.test(d) || /^\d{1,3}(\.\d+){3}$/.test(d)) {
-      throw new Error(`Certificates require a real domain you control — "${d}" is not eligible`);
+      throw new Error(`Certificates require a real domain you control - "${d}" is not eligible`);
     }
   }
   const client = await makeClient();
@@ -104,11 +104,11 @@ async function request(site, domains, email) {
   return { challenge: txt, staging };
 }
 
-// Step 2 — after the TXT records exist, answer the challenge and issue.
+// Step 2 - after the TXT records exist, answer the challenge and issue.
 async function complete(site) {
   if (!acme) throw new Error('acme-client is not installed on this server');
   const p = pending.get(site.id);
-  if (!p) throw new Error('No pending certificate request — start a new one');
+  if (!p) throw new Error('No pending certificate request - start a new one');
   try {
     for (const it of p.items) {
       await p.client.completeChallenge(it.challenge);
@@ -172,12 +172,12 @@ async function checkRenewals() {
     const user = db.prepare('SELECT email FROM users WHERE id = ?').get(site.user_id);
     try {
       await request(site, JSON.parse(site.domains || '[]'), user?.email);
-      logActivity(site.user_id, 'ssl.renew.staged', `"${site.name}" expires in ${st.daysLeft}d — new TXT records ready to verify`);
+      logActivity(site.user_id, 'ssl.renew.staged', `"${site.name}" expires in ${st.daysLeft}d - new TXT records ready to verify`);
       const dash = `http://${config.publicHost}:${config.adminPort}/#/sites/${site.id}`;
       if (user?.email) mail.send({
         to: user.email,
         subject: `Certificate expiring for ${site.name} (${st.daysLeft}d)`,
-        text: `The certificate for "${site.name}" expires in ${st.daysLeft} days. New DNS TXT records are staged — add them and click Verify: ${dash}`,
+        text: `The certificate for "${site.name}" expires in ${st.daysLeft} days. New DNS TXT records are staged - add them and click Verify: ${dash}`,
         html: mail.shell('Certificate expiring soon', `<p>The Let's Encrypt certificate for <b>${String(site.name).replace(/[&<>]/g, '')}</b> expires in <b>${st.daysLeft} days</b>.</p>
           <p>New DNS TXT records are staged. <a href="${dash}">Open the SSL tab</a>, add them, then click <b>Verify &amp; issue</b>.</p>`),
       }).catch(() => {});

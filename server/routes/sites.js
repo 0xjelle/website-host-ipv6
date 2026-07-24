@@ -112,7 +112,7 @@ router.post('/', async (req, res) => {
   if (billing.configured() && req.user.role !== 'admin') {
     billUser = db.prepare('SELECT ls_status, ls_subscription_id, ls_item_id FROM users WHERE id = ?').get(req.user.id);
     if (!billing.subscribed(billUser)) {
-      return res.status(402).json({ error: 'You need an active subscription to create a site — it is billed per site. Set it up in Billing.' });
+      return res.status(402).json({ error: 'You need an active subscription to create a site - it is billed per site. Set it up in Billing.' });
     }
   }
 
@@ -299,7 +299,7 @@ router.get('/:id/domains/cf', async (req, res) => {
       })),
       new Promise((r) => setTimeout(r, 8000)), // hard cap the whole DNS phase
     ]);
-  } catch { /* ignore — respond with what we have */ }
+  } catch { /* ignore - respond with what we have */ }
   console.log(`[domains/cf] site ${site.id}: responding (${hostnames.length} hostname(s))`);
   res.json({ enabled: cfsaas.isEnabled(), fallback_origin: fallbackOrigin, hostnames });
 });
@@ -315,7 +315,7 @@ router.post('/:id/domains/cf/sync', async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
-// Custom 404: no API — the edge proxy serves a 404.html straight from the
+// Custom 404: no API - the edge proxy serves a 404.html straight from the
 // site's directory if the site ships one (see services/proxy notFound()).
 
 // ── SSL (Let's Encrypt, DNS-01) ─────────────────────────────────────
@@ -374,8 +374,8 @@ function safePath(site, rel) {
   return p;
 }
 
-// All file-manager I/O is async (fs.promises) so a large operation — e.g.
-// deleting a big node_modules tree — never blocks the event loop and hangs
+// All file-manager I/O is async (fs.promises) so a large operation - e.g.
+// deleting a big node_modules tree - never blocks the event loop and hangs
 // the whole server.
 const fsp = fs.promises;
 
@@ -455,7 +455,7 @@ router.delete('/:id', (req, res) => {
   if (site.ipv6_addr) ipam.removeAddr(site.ipv6_addr);
   db.prepare('DELETE FROM sites WHERE id = ?').run(site.id);
   logActivity(req.user.id, 'site.delete', `"${site.name}"`);
-  // Respond immediately — the site is gone from the DB, so it disappears from
+  // Respond immediately - the site is gone from the DB, so it disappears from
   // the UI right away. The heavy cleanup (deleting the site directory, which can
   // hold a huge node_modules tree, plus removing Cloudflare hostnames) runs in
   // the background with async I/O so it never blocks the event loop / the

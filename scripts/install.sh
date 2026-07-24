@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ⬡ Hosting — pretty installer for Ubuntu Server (20.04+) / Debian (11+)
+# ⬡ Hosting - pretty installer for Ubuntu Server (20.04+) / Debian (11+)
 #
 #   curl -fsSL https://raw.githubusercontent.com/0xjelle/website-host-ipv6/main/scripts/install.sh | sudo bash
 #
@@ -37,11 +37,11 @@ banner() {
 }
 step() { STEP=$((STEP+1)); printf '%s' "${CYN}[${STEP}/${TOTAL}]${RST} ${BOLD}$1${RST} "; }
 ok()   { echo "${GRN}✓${RST}${1:+ ${DIM}$1${RST}}"; }
-skip() { echo "${DIM}– $1${RST}"; }
+skip() { echo "${DIM}- $1${RST}"; }
 warn() { echo "${YLW}! $1${RST}"; }
 die()  { echo; echo "${RED}${BOLD}✗ $1${RST}"; echo "${DIM}  full log: $LOG${RST}"; exit 1; }
 
-# run <description-of-failure> <cmd…> — quiet, logged, spinner on a tty
+# run <description-of-failure> <cmd…> - quiet, logged, spinner on a tty
 run() {
   local msg="$1"; shift
   if [ -t 1 ]; then
@@ -109,7 +109,7 @@ if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
 else
   run "Docker installation failed" bash -c 'curl -fsSL https://get.docker.com | sh'
   systemctl enable --now docker >>"$LOG" 2>&1 || true
-  ok "installed — enable per-site containers with USE_CONTAINERS=1 in .env"
+  ok "installed - enable per-site containers with USE_CONTAINERS=1 in .env"
 fi
 
 step "Hosting code → $APP_DIR"
@@ -123,7 +123,7 @@ if [ -d "$APP_DIR/.git" ]; then
   run "git pull failed" git -C "$APP_DIR" pull --ff-only
   ok "updated existing install"
 else
-  run "git clone failed — is the repo reachable?" git clone --depth 1 "$REPO_URL" "$APP_DIR"
+  run "git clone failed - is the repo reachable?" git clone --depth 1 "$REPO_URL" "$APP_DIR"
   ok "cloned"
 fi
 
@@ -154,13 +154,13 @@ if [ -d /run/systemd/system ]; then
   run "Could not start the hosting service" systemctl restart hosting
   ok "hosting.service running"
 else
-  skip "systemd not running (container?) — start manually: cd $APP_DIR && npm start"
+  skip "systemd not running (container?) - start manually: cd $APP_DIR && npm start"
 fi
 
 step "WireGuard + BGP (wg0 · bird)"
 mkdir -p /etc/wireguard /etc/bird
 # Hosting writes the live interface configs directly into /etc/wireguard as
-# real files (wg0.conf, uplink.conf) — required because wg-quick's AppArmor
+# real files (wg0.conf, uplink.conf) - required because wg-quick's AppArmor
 # profile only permits reading configs under /etc/wireguard. Remove any old
 # symlink from a previous version so the app can replace it with a real file.
 [ -L /etc/wireguard/wg0.conf ] && rm -f /etc/wireguard/wg0.conf
@@ -174,7 +174,7 @@ sysctl -p /etc/sysctl.d/99-hosting.conf >/dev/null 2>&1 || true
 if [ "$SYSTEMD_UP" -eq 1 ]; then
   for _ in $(seq 1 20); do [ -f "$APP_DIR/data/wireguard/wg0.conf" ] && break; sleep 1; done
   WG_MSG="tunnel up" BIRD_MSG="bgp daemon up"
-  systemctl enable --now wg-quick@wg0 >>"$LOG" 2>&1 || WG_MSG="wg0 not started yet (fine — starts once configured)"
+  systemctl enable --now wg-quick@wg0 >>"$LOG" 2>&1 || WG_MSG="wg0 not started yet (fine - starts once configured)"
   { systemctl enable --now bird >>"$LOG" 2>&1 && systemctl restart bird >>"$LOG" 2>&1; } || BIRD_MSG="bird not started (check journalctl -u bird)"
   ok "$WG_MSG · $BIRD_MSG"
 else
@@ -190,7 +190,7 @@ if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q 'Status: active
   run "ufw rule failed" ufw allow 51820/udp
   ok "opened $PROXY_PORT/tcp · $ADMIN_PORT/tcp · 2222/tcp (sftp) · 51820/udp"
 else
-  skip "ufw not active — nothing to open"
+  skip "ufw not active - nothing to open"
 fi
 
 # ── summary ─────────────────────────────────────────────────────────
@@ -204,7 +204,7 @@ printf "   ${MAG}│${RST}  %-56s${MAG}│${RST}\n" "Sites       port $PROXY_POR
 printf "   ${MAG}│${RST}  %-56s${MAG}│${RST}\n" "WireGuard   udp/51820"
 echo "   ${MAG}└──────────────────────────────────────────────────────────┘${RST}"
 echo
-echo "   ${BOLD}First step:${RST} open the dashboard and register —"
+echo "   ${BOLD}First step:${RST} open the dashboard and register -"
 echo "   the ${BOLD}first account becomes the admin${RST}. ✨"
 echo
 echo "   ${DIM}config     $APP_DIR/.env  (then: systemctl restart hosting)${RST}"

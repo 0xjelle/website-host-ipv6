@@ -1,4 +1,4 @@
-// Polls GitHub for new commits and auto-deploys — the pull-based counterpart
+// Polls GitHub for new commits and auto-deploys - the pull-based counterpart
 // to webhooks, for servers GitHub can't reach (behind NAT / private IP).
 // Every interval, each auto-deploy site's configured branch is checked; if
 // its head commit differs from what's currently checked out, a deploy runs.

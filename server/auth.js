@@ -37,7 +37,7 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-// Sets req.user when a valid session is present, but never rejects — for
+// Sets req.user when a valid session is present, but never rejects - for
 // endpoints that tailor their response to the viewer (e.g. the status page).
 function optionalAuth(req, res, next) {
   const token = getTokenFromReq(req);

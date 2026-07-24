@@ -1,4 +1,4 @@
-// Public status page data — no auth. Lists every site and whether it is
+// Public status page data - no auth. Lists every site and whether it is
 // currently serving, for a built-in status dashboard. Only exposes the
 // site name, type and public URL (no IPs, owners or internal ports).
 const express = require('express');
@@ -19,7 +19,7 @@ function sslFor(s) {
     return { state: st.daysLeft !== null && st.daysLeft <= 20 ? 'expiring' : 'secure', daysLeft: st.daysLeft, not_after: st.not_after };
   }
   // A domain fronted by Cloudflare gets its certificate from Cloudflare, not
-  // the platform's Let's Encrypt — count that as secured too.
+  // the platform's Let's Encrypt - count that as secured too.
   try {
     if (cfsaas.rowsForSite(s.id).map(cfsaas.view).some(h => h.active)) return { state: 'secure', via: 'cloudflare' };
   } catch { /* ignore */ }
@@ -31,7 +31,7 @@ function sslFor(s) {
 
 router.get('/', async (req, res) => {
   // Only show the viewer their own sites (admins see all). Anonymous visitors
-  // see none — a tenant's sites are never exposed to others.
+  // see none - a tenant's sites are never exposed to others.
   let rows = [];
   if (req.user && req.user.role === 'admin') rows = db.prepare("SELECT * FROM sites ORDER BY name").all();
   else if (req.user) rows = db.prepare("SELECT * FROM sites WHERE user_id = ? ORDER BY name").all(req.user.id);

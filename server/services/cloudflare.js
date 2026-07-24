@@ -1,7 +1,7 @@
 // Cloudflare edge integration (DDoS protection).
 //
 // The platform's own domain and its free per-site subdomains (<slug>.<host>)
-// are meant to be put *behind* Cloudflare — the DNS records are "orange-clouded"
+// are meant to be put *behind* Cloudflare - the DNS records are "orange-clouded"
 // (proxied) in the Cloudflare dashboard, so every visitor hits Cloudflare's edge
 // first and Cloudflare's always-on DDoS protection filters the traffic before it
 // ever reaches this server. That setup lives in Cloudflare's dashboard, not here.
@@ -10,7 +10,7 @@
 // when a request arrives from Cloudflare, the immediate TCP peer is a Cloudflare
 // edge IP and the real visitor's address is in the `CF-Connecting-IP` header. We
 //   • know Cloudflare's published IP ranges (v4 + v6), refreshable at runtime;
-//   • recover the real client IP + scheme — but ONLY when the connection genuinely
+//   • recover the real client IP + scheme - but ONLY when the connection genuinely
 //     originates from a Cloudflare address, so a direct attacker can't spoof
 //     `CF-Connecting-IP` to forge their source;
 //   • count how many requests arrive via Cloudflare vs. directly, so the dashboard
@@ -22,7 +22,7 @@ const net = require('net');
 const config = require('../config');
 const { getSetting, setSetting } = require('../db');
 
-// Cloudflare's published edge ranges — www.cloudflare.com/ips-v4 · /ips-v6.
+// Cloudflare's published edge ranges - www.cloudflare.com/ips-v4 · /ips-v6.
 // Bundled so protection works with no outbound call on a fresh install; the
 // admin can refresh them from Cloudflare at any time (they change rarely).
 const DEFAULT_V4 = [

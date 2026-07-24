@@ -1,11 +1,11 @@
-// Cloudflare for SaaS — route users' OWN custom domains through Cloudflare.
+// Cloudflare for SaaS - route users' OWN custom domains through Cloudflare.
 //
 // The platform operator owns one Cloudflare zone with "Cloudflare for SaaS"
 // enabled and a "fallback origin" pointing (proxied) at this server. For every
 // custom domain a user adds to a site, we register a Cloudflare *custom
 // hostname* via the API; Cloudflare then issues the certificate, filters DDoS,
 // and forwards to the fallback origin. The user's only step is a single CNAME
-// from their domain to the fallback origin — because that target is
+// from their domain to the fallback origin - because that target is
 // Cloudflare-proxied, their traffic goes through Cloudflare by construction.
 //
 // This server's edge proxy already routes by Host header, so once Cloudflare
@@ -37,7 +37,7 @@ function getConfig() {
 function hasToken() { return !!getSetting('cf_api_token', ''); }
 
 // Fully usable only when enabled AND a token + zone are present. The account id
-// is optional — the custom-hostname API authenticates with the token, not the
+// is optional - the custom-hostname API authenticates with the token, not the
 // account id (that's only needed for account-scoped calls / zone provisioning).
 function isEnabled() {
   const c = getConfig();
@@ -92,7 +92,7 @@ function api(method, path, body, tokenOverride) {
 }
 
 // Validate a token + zone (used by the "Test" button). Returns the zone name.
-// If an account id is supplied, also confirm the token can see that account —
+// If an account id is supplied, also confirm the token can see that account -
 // catches a mis-scoped token early (and is used for zone auto-provisioning).
 async function testConfig(token, zoneId, accountId) {
   if (!zoneId) throw new Error('Zone ID is required');
@@ -143,7 +143,7 @@ async function ensureFallbackOriginRecord() {
 function createHostname(hostname) {
   const { zoneId } = getConfig();
   // HTTP DV: once the customer's CNAME points at Cloudflare, Cloudflare serves
-  // the validation token at its own edge and issues the cert — so the customer
+  // the validation token at its own edge and issues the cert - so the customer
   // adds ONLY the CNAME, no TXT record. (Trade-off vs. 'txt': the CNAME must be
   // live before the first cert can issue; it can't be pre-validated.)
   const body = {
@@ -169,7 +169,7 @@ function deleteHostname(cfId) {
 }
 
 // Pull the records the CUSTOMER must add out of a Cloudflare custom-hostname
-// result. With HTTP DV that's just the single routing CNAME — Cloudflare serves
+// result. With HTTP DV that's just the single routing CNAME - Cloudflare serves
 // both the SSL token and the ownership token at its edge once the CNAME points
 // at us, so no TXT is required. We keep a defensive fallback: if Cloudflare ever
 // returns a TXT DCV record (e.g. a txt-method hostname), we still surface it so
@@ -178,7 +178,7 @@ function extractVerification(result) {
   const out = { cname_target: getConfig().fallbackOrigin || null, ownership: null, ssl_records: [] };
   // Ownership TXT (_cf-custom-hostname): Cloudflare returns this alongside the
   // CNAME. With HTTP DV it isn't strictly required, but adding it completes /
-  // speeds up verification and is the fallback when HTTP validation can't run —
+  // speeds up verification and is the fallback when HTTP validation can't run -
   // so we surface it as the "add this TXT too" step after the CNAME.
   if (result.ownership_verification && result.ownership_verification.name) {
     out.ownership = {
@@ -310,7 +310,7 @@ async function deleteIds(cfIds) {
   }
 }
 
-// Poll Cloudflare for hostnames that aren't fully active yet — and also
+// Poll Cloudflare for hostnames that aren't fully active yet - and also
 // re-check active ones that haven't been refreshed in 12h, so the stored cert
 // details stay current when Cloudflare auto-renews (renewal is Cloudflare's
 // job; this just keeps our displayed expiry date honest).

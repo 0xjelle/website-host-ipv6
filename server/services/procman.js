@@ -10,7 +10,7 @@ const MAX_LOG_LINES = 500;
 // Multi-tenant isolation: each site's Node app runs as its own dedicated,
 // unprivileged system user (hsite<id>) that owns only that site's files. This
 // stops one tenant from reading another tenant's files/secrets or the
-// platform's data. Best-effort — requires the platform to run as root with
+// platform's data. Best-effort - requires the platform to run as root with
 // useradd available; otherwise we fall back to running as the platform user.
 function siteUnixUser(siteId) {
   if (!(process.getuid && process.getuid() === 0)) return null;
@@ -109,7 +109,7 @@ function startInContainer(site, cwd, entry) {
   const name = `hsite${site.id}`;
   const startCmd = site.start_cmd && site.start_cmd.trim() ? site.start_cmd : 'npm start';
   const build = site.build_cmd && site.build_cmd.trim() ? site.build_cmd : null;
-  // Install (and build) only when node_modules is absent — the deployer clears
+  // Install (and build) only when node_modules is absent - the deployer clears
   // it on each deploy, so a fresh deploy reinstalls while a plain restart skips.
   const inner = 'set -e; if [ -f package.json ] && [ ! -d node_modules ]; then npm install --omit=dev'
     + (build ? ` && ${build}` : '') + '; fi; exec ' + startCmd;
@@ -180,7 +180,7 @@ function start(site, config) {
   if (owner) {
     try {
       // -R every start: a redeploy/SFTP writes files as root, and the app (the
-      // site user) must own them to read/write. Bounded — start isn't frequent.
+      // site user) must own them to read/write. Bounded - start isn't frequent.
       execFileSync('chown', ['-R', `${owner.uid}:${owner.gid}`, siteRoot]);
       fs.chmodSync(siteRoot, 0o750); // other tenants can't traverse in
       env.HOME = siteRoot;
@@ -221,7 +221,7 @@ function start(site, config) {
     const current = db.prepare('SELECT status FROM sites WHERE id = ?').get(site.id);
     // 'live' apps are public; 'stopped' apps still run locally for testing.
     // Both are supervised. A deliberate stop() detaches this listener, so this
-    // only fires on real crashes — auto-restart (max 5 rapid restarts).
+    // only fires on real crashes - auto-restart (max 5 rapid restarts).
     const supervised = current && (current.status === 'live' || current.status === 'stopped');
     if (supervised && entry.restarts < 5) {
       entry.restarts += 1;
@@ -249,7 +249,7 @@ function stop(siteId) {
     }
     entry.child = null;
   }
-  // Remove any container for this site — ASYNC (fire-and-forget): a synchronous
+  // Remove any container for this site - ASYNC (fire-and-forget): a synchronous
   // `docker rm -f` on a running container blocks the whole event loop for
   // seconds and made site deletion hang. start() re-removes synchronously right
   // before `docker run`, so nothing races on this. No-op without Docker.

@@ -66,7 +66,7 @@ const validAsn = (v) => !v || /^(AS)?\d{1,10}$/i.test(v);
 function renderServerConf() {
   const s = getSettings();
   const peers = db.prepare('SELECT * FROM wg_peers WHERE enabled = 1').all();
-  let conf = `# Hosting WireGuard server config — generated ${new Date().toISOString()}
+  let conf = `# Hosting WireGuard server config - generated ${new Date().toISOString()}
 [Interface]
 PrivateKey = ${s.private_key}
 Address = ${s.tunnel_v4}, ${s.tunnel_v6}
@@ -80,7 +80,7 @@ PostUp = sysctl -w net.ipv4.ip_forward=1 net.ipv6.conf.all.forwarding=1
     if (p.routed_v6) allowed.push(p.routed_v6);
     conf += `
 [Peer]
-# ${p.name} (peer #${p.id})${p.asn ? ` — ${p.asn.toUpperCase().startsWith('AS') ? p.asn.toUpperCase() : 'AS' + p.asn}` : ''}
+# ${p.name} (peer #${p.id})${p.asn ? ` - ${p.asn.toUpperCase().startsWith('AS') ? p.asn.toUpperCase() : 'AS' + p.asn}` : ''}
 PublicKey = ${p.public_key}
 PresharedKey = ${p.preshared_key}
 AllowedIPs = ${allowed.join(', ')}
@@ -96,7 +96,7 @@ function renderClientConf(peer) {
   if (peer.routed_v4) addresses.push(peer.routed_v4);
   const serverV4 = s.tunnel_v4.split('/')[0];
   const serverV6 = s.tunnel_v6.split('/')[0];
-  return `# Hosting WireGuard — peer "${peer.name}"
+  return `# Hosting WireGuard - peer "${peer.name}"
 [Interface]
 PrivateKey = ${peer.private_key}
 Address = ${addresses.join(', ')}
@@ -121,7 +121,7 @@ function renderBirdConf(peer) {
   const peerV4 = peer.addr_v4.split('/')[0];
   const serverV6 = s.tunnel_v6.split('/')[0];
   const serverV4 = s.tunnel_v4.split('/')[0];
-  let conf = `# BIRD2 config — YOUR side of the Hosting tunnel (the WireGuard client).
+  let conf = `# BIRD2 config - YOUR side of the Hosting tunnel (the WireGuard client).
 # Announces ${[peer.routed_v6, peer.routed_v4].filter(Boolean).join(' + ')} from AS${asn}
 # to the Hosting server${serverAsn ? ` (AS${serverAsn})` : ''} over the tunnel.
 # Bring the WireGuard tunnel up first, then: bird -c this-file.conf
@@ -139,7 +139,7 @@ protocol static announce_v6 {
 
 protocol bgp hosting_v6 {
   local ${peerV6} as ${asn};
-  neighbor ${serverV6} as ${serverAsn || '<SERVER_ASN — ask your admin to set it>'};
+  neighbor ${serverV6} as ${serverAsn || '<SERVER_ASN - ask your admin to set it>'};
   hold time 90;
   ipv6 {
     import none;
@@ -155,7 +155,7 @@ protocol static announce_v4 {
 
 protocol bgp hosting_v4 {
   local ${peerV4} as ${asn};
-  neighbor ${serverV4} as ${serverAsn || '<SERVER_ASN — ask your admin to set it>'};
+  neighbor ${serverV4} as ${serverAsn || '<SERVER_ASN - ask your admin to set it>'};
   hold time 90;
   ipv4 {
     import none;
@@ -183,7 +183,7 @@ function applyLive(cb) {
     return cb({ applied: false, reason: 'config written to disk; not running as root so it was not applied live (use the systemd service)', confPath });
   }
   execFile('wg-quick', ['strip', wg0Arg], (err, stripped) => {
-    if (err) return cb({ applied: false, reason: 'wg-quick not available — config written to disk only', confPath });
+    if (err) return cb({ applied: false, reason: 'wg-quick not available - config written to disk only', confPath });
     const tmp = path.join(config.wgDir, 'wg0.stripped.conf');
     fs.writeFileSync(tmp, stripped, { mode: 0o600 });
     execFile('wg', ['syncconf', 'wg0', tmp], (err2) => {

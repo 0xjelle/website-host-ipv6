@@ -1,4 +1,4 @@
-/* Hosting console — hash-routed SPA, no build step. */
+/* Hosting console - hash-routed SPA, no build step. */
 (() => {
   const $app = document.getElementById('app');
   let me = null;
@@ -27,7 +27,7 @@
       if (!res.ok) { const err = new Error(data.error || `Request failed (${res.status})`); err.data = data; err.status = res.status; throw err; }
       return data;
     } catch (e) {
-      if (e.name === 'AbortError') throw new Error('Timed out — the server did not respond in 20s');
+      if (e.name === 'AbortError') throw new Error('Timed out - the server did not respond in 20s');
       throw e;
     } finally {
       if (timer) clearTimeout(timer);
@@ -44,13 +44,13 @@
   const oops = (e) => toast(e.message || String(e), 'err');
 
   function copy(text, label = 'Copied') {
-    navigator.clipboard?.writeText(text).then(() => toast(label, 'ok')).catch(() => toast('Copy failed — select manually', 'err'));
+    navigator.clipboard?.writeText(text).then(() => toast(label, 'ok')).catch(() => toast('Copy failed - select manually', 'err'));
   }
   window._copy = copy;
 
-  const fmtDate = (s) => s ? new Date(s.includes('T') ? s : s + 'Z').toLocaleString() : '—';
+  const fmtDate = (s) => s ? new Date(s.includes('T') ? s : s + 'Z').toLocaleString() : '-';
   const ago = (s) => {
-    if (!s) return '—';
+    if (!s) return '-';
     const sec = Math.floor((Date.now() - new Date(s.includes('T') ? s : s + 'Z')) / 1000);
     if (sec < 60) return `${sec}s ago`;
     if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
@@ -116,10 +116,10 @@
     const ca = d.authority ? (CF_CA[d.authority] || d.authority) : '';
     const exp = fmtDate(d.expires_on);
     const sslDone = 'SSL certificate active'
-      + (ca ? ` — ${esc(ca)}` : '')
+      + (ca ? ` - ${esc(ca)}` : '')
       + (exp ? `, valid until ${esc(exp)}` : '');
     return `<div style="margin:.3rem 0 .5rem">
-      ${cfCheck(hn.cname_detected, 'CNAME record detected in DNS', 'CNAME not added yet — add it below')}
+      ${cfCheck(hn.cname_detected, 'CNAME record detected in DNS', 'CNAME not added yet - add it below')}
       ${cfCheck(hn.ssl_status === 'active', sslDone, 'Certificate issues automatically once the CNAME is live')}
     </div>`;
   }
@@ -143,10 +143,10 @@
         ${hn.active ? '' : cfRecordsTable(cfRecordRows(hn, cf.fallback_origin))}
       </div>`).join('');
     const m = modal(`
-      <h2>Almost there — point your domain</h2>
-      <p style="color:var(--ink-2);font-size:.9rem;margin:.2rem 0 1rem">Add these DNS records at your domain's provider. Your site goes live behind Cloudflare — with its certificate and DDoS protection — automatically once the records are detected. You don't have to wait here; the same status is on the site's Settings.</p>
+      <h2>Almost there - point your domain</h2>
+      <p style="color:var(--ink-2);font-size:.9rem;margin:.2rem 0 1rem">Add these DNS records at your domain's provider. Your site goes live behind Cloudflare - with its certificate and DDoS protection - automatically once the records are detected. You don't have to wait here; the same status is on the site's Settings.</p>
       ${rows}
-      <div class="actions"><button type="button" class="btn primary" id="godone">Got it — go to site</button></div>`);
+      <div class="actions"><button type="button" class="btn primary" id="godone">Got it - go to site</button></div>`);
     m.querySelector('#godone').addEventListener('click', () => { m.remove(); location.hash = `#/sites/${site.id}`; });
     return m;
   }
@@ -162,13 +162,13 @@
       </div>`).join('');
     return `<div class="card" style="border-color:#5a3a12;background:#1c1408">
       <h2 style="color:var(--warn)">⚠ Add your DNS record to go live</h2>
-      <p style="color:var(--ink-2);font-size:.9rem;margin:.2rem 0 0">Your custom domain isn't active yet. Add the record${pending.length > 1 ? 's' : ''} below at your domain's DNS provider — <b>just the one CNAME, no TXT</b>. The site turns on automatically (certificate + Cloudflare DDoS) once it's detected.</p>
+      <p style="color:var(--ink-2);font-size:.9rem;margin:.2rem 0 0">Your custom domain isn't active yet. Add the record${pending.length > 1 ? 's' : ''} below at your domain's DNS provider - <b>just the one CNAME, no TXT</b>. The site turns on automatically (certificate + Cloudflare DDoS) once it's detected.</p>
       ${rows}</div>`;
   }
 
   // ── charts (SVG, no deps) ───────────────────────────────────────
   const fmtTime = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  // validated categorical palette (dark surface) — dataviz skill, fixed order
+  // validated categorical palette (dark surface) - dataviz skill, fixed order
   const SERIES_COLORS = ['#3987e5', '#008300', '#d55181', '#c98500', '#199e70', '#d95926', '#9085e9', '#e66767'];
 
   // Multi-series line chart with legend + crosshair tooltip. series:
@@ -176,7 +176,7 @@
   function multiLineChart(el, series, { unit = '', fmtVal = (v) => v + unit, fmtAxis = null } = {}) {
     const axisLabel = fmtAxis || ((v) => (v >= 10 ? Math.round(v) : v.toFixed(1)));
     if (!series.length || series.every(s => s.points.length < 2)) {
-      el.innerHTML = `<div class="chart-empty">No traffic yet — this fills in as visitors arrive.</div>`;
+      el.innerHTML = `<div class="chart-empty">No traffic yet - this fills in as visitors arrive.</div>`;
       return;
     }
     const W = 680, H = 190, PL = fmtAxis ? 60 : 40, PB = 18, PT = 8, PR = 8;
@@ -225,7 +225,7 @@
   // Smooth single-series line/area chart with crosshair tooltip.
   function lineChart(el, points, { color = 'var(--accent)', unit = '', maxY = null, label = '' } = {}) {
     if (!points || points.length < 2) {
-      el.innerHTML = `<div class="chart-empty">No data yet — collecting…</div>`;
+      el.innerHTML = `<div class="chart-empty">No data yet - collecting…</div>`;
       return;
     }
     const W = 640, H = 160, PL = 34, PB = 18, PT = 8, PR = 6;
@@ -353,7 +353,7 @@
       $app.innerHTML = `
       <div class="auth-wrap"><div class="auth-card">
         <div class="logo"><span class="hex">⬡</span> Hosting</div>
-        ${mode === 'register' && !hasUsers ? `<div class="first-user-banner" style="margin-top:1.2rem">✨ You're the first user — this account becomes the <b>administrator</b>.</div>` : ''}
+        ${mode === 'register' && !hasUsers ? `<div class="first-user-banner" style="margin-top:1.2rem">✨ You're the first user - this account becomes the <b>administrator</b>.</div>` : ''}
         <h1>${TITLE[mode]}</h1>
         <p class="sub">${SUB[mode]}</p>
         <form id="authform">
@@ -380,12 +380,12 @@
         try {
           if (mode === 'forgot') {
             const r = await api('/auth/forgot', { method: 'POST', body: { email: fd.email } });
-            toast(r.mail_configured ? 'If that email exists, a reset link is on its way.' : 'Email is not set up on this server — ask the admin to configure it.', r.mail_configured ? 'ok' : '');
+            toast(r.mail_configured ? 'If that email exists, a reset link is on its way.' : 'Email is not set up on this server - ask the admin to configure it.', r.mail_configured ? 'ok' : '');
             mode = 'login'; draw(); return;
           }
           if (mode === 'reset') {
             await api('/auth/reset', { method: 'POST', body: { token: resetToken, password: fd.password } });
-            toast('Password updated — you can sign in now.', 'ok');
+            toast('Password updated - you can sign in now.', 'ok');
             mode = 'login'; resetToken = null; location.hash = ''; draw(); return;
           }
           const body = (mode === 'login' && askCode) ? { ...pendingCreds, code: fd.code } : { ...fd };
@@ -398,7 +398,7 @@
           location.hash = '#/overview';
           render();
         } catch (err) {
-          resetCaptcha(); // Turnstile tokens are single-use — get a fresh one
+          resetCaptcha(); // Turnstile tokens are single-use - get a fresh one
           if (mode === 'login' && err.data && err.data.twofa) {
             pendingCreds = { email: fd.email || pendingCreds?.email, password: fd.password || pendingCreds?.password };
             if (!askCode) { askCode = true; draw(); return; } // first prompt, don't shout an error
@@ -457,7 +457,7 @@
     const c = h(`
       <div>
         <div class="page-head"><h1>Overview</h1>
-          <div class="sub">Hello ${esc(me.name)} — here's what's happening on your platform.</div></div>
+          <div class="sub">Hello ${esc(me.name)} - here's what's happening on your platform.</div></div>
         <div class="tiles">
           <div class="tile accent"><div class="t-label">Sites</div><div class="t-value">${stats.sites}</div><div class="t-note">${stats.liveSites} live</div></div>
           <div class="tile"><div class="t-label">Bandwidth</div><div class="t-value" id="bw-rate">${fmtBytes(bw.rateBps)}/s</div><div class="t-note" id="bw-total">${fmtBytes(bw.total)} total served</div></div>
@@ -478,7 +478,7 @@
               <td><a href="#/sites/${d.site_id}">${esc(d.site_name)}</a></td>
               <td>${pill(d.status)}</td>
               <td>${esc(d.trigger)}</td>
-              <td class="mono">${esc(d.commit_sha || '—')} ${esc((d.commit_msg || '').split('\n')[0].slice(0, 40))}</td>
+              <td class="mono">${esc(d.commit_sha || '-')} ${esc((d.commit_msg || '').split('\n')[0].slice(0, 40))}</td>
               <td>${ago(d.started_at)}</td></tr>`).join('')}
           </table></div>` : `<div class="empty"><div class="big">🚀</div>No deployments yet.<br>Create a site and connect a GitHub repository to get going.</div>`}
         </div>
@@ -515,7 +515,7 @@
     const c = h(`
       <div>
         <div class="page-head"><h1>Traffic per website</h1>
-          <div class="sub">Requests and bandwidth for each of your sites — last hour, per minute.</div></div>
+          <div class="sub">Requests and bandwidth for each of your sites - last hour, per minute.</div></div>
         <div class="card">
           <h2 style="display:flex;align-items:center;gap:.6rem">
             <span id="tr-title">Requests</span>
@@ -597,7 +597,7 @@
               <span>${s.repo_url ? '⎇ ' + esc(s.repo_url.replace(/^https:\/\/(www\.)?/, '').replace(/\.git$/, '')) : 'no repo connected'}</span>
             </div>
           </div>`).join('')}</div>`
-        : `<div class="empty"><div class="big">▤</div>No sites yet. Create your first one — static HTML or a Node.js app.</div>`}
+        : `<div class="empty"><div class="big">▤</div>No sites yet. Create your first one - static HTML or a Node.js app.</div>`}
       </div>`);
     const main = shell('sites', c);
     main.querySelector('#newsite').addEventListener('click', () => newSiteModal(ghState));
@@ -610,7 +610,7 @@
     const m = modal(ghState.connected ? `
       <h2>GitHub connected</h2>
       <p style="color:var(--ink-2);font-size:.9rem">Connected as <b>${esc(ghState.login)}</b>. Your private
-        repositories can be browsed and deployed, and webhooks are created automatically — no need to make
+        repositories can be browsed and deployed, and webhooks are created automatically - no need to make
         anything public.</p>
       <div class="actions">
         <button type="button" class="btn" id="cancel">Close</button>
@@ -618,7 +618,7 @@
       </div>` : `
       <h2>Connect GitHub</h2>
       <p style="color:var(--ink-2);font-size:.9rem">Paste a <b>Personal Access Token</b> so Hosting can deploy your
-        <b>private</b> repositories and create webhooks for you — repos never need to be public.</p>
+        <b>private</b> repositories and create webhooks for you - repos never need to be public.</p>
       <p style="color:var(--ink-3);font-size:.82rem">Create one at <b>GitHub → Settings → Developer settings →
         Personal access tokens</b>. A <b>classic</b> token with the <code class="code">repo</code> scope (and
         <code class="code">admin:repo_hook</code> for auto-webhooks) works; or a fine-grained token with
@@ -655,7 +655,7 @@
             <select name="type"><option value="static">Static (HTML/CSS/JS)</option><option value="node">Node.js app</option></select></label>
         </div>
         ${ghState.connected ? `
-        <label class="field"><span class="lbl">Pick a repository <span style="font-weight:400">(${esc(ghState.login)} — incl. private)</span></span>
+        <label class="field"><span class="lbl">Pick a repository <span style="font-weight:400">(${esc(ghState.login)} - incl. private)</span></span>
           <select id="repopick"><option value="">Loading your repos…</option></select>
           <span class="help">Or paste a URL below. Private repos deploy automatically via your connected account.</span></label>` : `
         <div class="first-user-banner" style="margin-bottom:1rem">🐙 <b>Connect GitHub</b> (button on the Sites page) to browse and deploy <b>private</b> repos without a per-site token.</div>`}
@@ -664,7 +664,7 @@
           <span class="help">Pushes to the branch below auto-deploy.${ghState.connected ? ' The webhook is created for you.' : ' Add the webhook shown after creation.'}</span></label>
         <div class="formrow">
           <label class="field"><span class="lbl">Branch</span><input type="text" name="repo_branch" value="main"></label>
-          <label class="field"><span class="lbl">Access token <span style="font-weight:400">(${ghState.connected ? 'optional — uses your account' : 'private repos'})</span></span>
+          <label class="field"><span class="lbl">Access token <span style="font-weight:400">(${ghState.connected ? 'optional - uses your account' : 'private repos'})</span></span>
             <input type="password" name="repo_token" placeholder="ghp_… (optional)"></label>
         </div>
         <div class="formrow">
@@ -689,7 +689,7 @@
     const pick = m.querySelector('#repopick');
     if (pick) {
       api('/github/repos').then(({ repos }) => {
-        pick.innerHTML = '<option value="">— choose a repository —</option>' +
+        pick.innerHTML = '<option value="">- choose a repository -</option>' +
           repos.map(r => `<option value="${esc(r.clone_url)}" data-branch="${esc(r.default_branch)}">${r.private ? '🔒 ' : ''}${esc(r.full_name)}</option>`).join('');
       }).catch(() => { pick.innerHTML = '<option value="">Could not load repos</option>'; });
       pick.addEventListener('change', () => {
@@ -711,7 +711,7 @@
         delete body.domain;
         const { site, webhook, cf } = await api('/sites', { method: 'POST', body });
         m.remove();
-        toast(`Site "${site.name}" created${site.repo_url ? ' — first deploy started' : ''}`, 'ok');
+        toast(`Site "${site.name}" created${site.repo_url ? ' - first deploy started' : ''}`, 'ok');
         if (webhook?.created) toast('GitHub webhook created automatically 🎉', 'ok');
         else if (site.repo_url && webhook && webhook.reason && !/already/.test(webhook.reason)) toast(`Webhook not auto-created: ${webhook.reason}`, '');
         // If a custom domain was registered with Cloudflare, show the DNS records
@@ -748,10 +748,10 @@
           <div class="kv">
             <span class="k">Default URL</span><span class="v"><a href="${esc(site.default_url)}" target="_blank">${esc(site.default_url)}</a>
               <button class="cp" style="background:none;border:none;cursor:pointer;color:var(--ink-3)" onclick="_copy('${esc(site.default_url)}')" title="copy">⧉</button></span>
-            ${site.status === 'stopped' ? `<span class="k"></span><span class="v" style="color:#f0b429">⏸ Stopped — not public, but still ${site.type === 'node' ? 'running and reachable' : 'reachable'} at the default URL above so you can test it locally. Custom domains and the dedicated IPv6 stay offline.</span>` : ''}
+            ${site.status === 'stopped' ? `<span class="k"></span><span class="v" style="color:#f0b429">⏸ Stopped - not public, but still ${site.type === 'node' ? 'running and reachable' : 'reachable'} at the default URL above so you can test it locally. Custom domains and the dedicated IPv6 stay offline.</span>` : ''}
             ${site.ipv6_addr && me.role === 'admin' ? `<span class="k">Dedicated IPv6 <span style="color:var(--ink-3);font-weight:400">(admin only)</span></span><span class="v">${esc(site.ipv6_addr)}
               <button class="cp" style="background:none;border:none;cursor:pointer;color:var(--ink-3)" onclick="_copy('${esc(site.ipv6_addr)}', 'IPv6 copied')" title="copy">⧉</button>
-              <span style="color:var(--ink-3)"> — internal origin address</span></span>` : ''}
+              <span style="color:var(--ink-3)"> - internal origin address</span></span>` : ''}
             ${domains.map(d => `<span class="k">Custom domain</span><span class="v"><a href="http://${esc(d)}" target="_blank">http://${esc(d)}</a> <span class="cf-stat" data-host="${esc(String(d).toLowerCase())}"></span></span>`).join('')}
             ${site.type === 'node' ? `<span class="k">Internal port</span><span class="v">${site.app_port} ${site.process?.running ? `· running ${uptimeStr(site.process.uptimeSec)}` : '· not running'}</span>` : ''}
           </div>
@@ -813,7 +813,7 @@
           <tr><th>#</th><th>Status</th><th>Trigger</th><th>Commit</th><th>Started</th><th></th></tr>
           ${deployments.map(d => `<tr>
             <td>${d.id}</td><td>${pill(d.status)}</td><td>${esc(d.trigger)}</td>
-            <td class="mono">${esc(d.commit_sha || '—')} ${esc((d.commit_msg || '').split('\n')[0].slice(0, 44))}</td>
+            <td class="mono">${esc(d.commit_sha || '-')} ${esc((d.commit_msg || '').split('\n')[0].slice(0, 44))}</td>
             <td>${ago(d.started_at)}</td>
             <td><button class="btn small viewlog" data-dep="${d.id}">log</button></td></tr>`).join('')}
         </table></div>` : `<div class="empty">No deployments yet. Connect a repo and hit <b>Deploy now</b>.</div>`}
@@ -821,7 +821,7 @@
       body.querySelectorAll('.viewlog').forEach(btn => btn.addEventListener('click', async () => {
         try {
           const { deployment } = await api(`/sites/${id}/deployments/${btn.dataset.dep}`);
-          modal(`<h2>Deploy #${deployment.id} — ${esc(deployment.status)}</h2>
+          modal(`<h2>Deploy #${deployment.id} - ${esc(deployment.status)}</h2>
             <div class="logbox">${esc(deployment.log || '(no output)')}</div>
             <div class="actions"><button class="btn" onclick="this.closest('.modal-back').remove()">Close</button></div>`);
         } catch (e) { oops(e); }
@@ -853,7 +853,7 @@
             <ol style="color:var(--ink-3);font-size:.83rem;line-height:1.8;margin:0 0 .8rem;padding-left:1.2rem">
               <li>GitHub → <b>Settings → Developer settings → Personal access tokens</b></li>
               <li><b>Tokens (classic)</b> → <i>Generate new token</i> → tick <code class="code">repo</code>
-                and <code class="code">admin:repo_hook</code> — or a <b>fine-grained</b> token with
+                and <code class="code">admin:repo_hook</code> - or a <b>fine-grained</b> token with
                 <b>Contents: Read</b> and <b>Webhooks: Read &amp; write</b></li>
               <li>Copy the token (starts with <code class="code">ghp_</code> or <code class="code">github_pat_</code>) and paste it below</li>
             </ol>
@@ -866,7 +866,7 @@
           gb.querySelector('#ghsave').addEventListener('click', async () => {
             const token = gb.querySelector('#ghtok').value.trim();
             if (!token) return toast('Paste a token first', 'err');
-            try { const r = await api('/github', { method: 'POST', body: { token } }); toast(`Connected as ${r.login} — redeploy to pull private repos`, 'ok'); loadGh(); }
+            try { const r = await api('/github', { method: 'POST', body: { token } }); toast(`Connected as ${r.login} - redeploy to pull private repos`, 'ok'); loadGh(); }
             catch (e) { oops(e); }
           });
           gb.querySelector('#ghtok').addEventListener('keydown', (e) => { if (e.key === 'Enter') gb.querySelector('#ghsave').click(); });
@@ -880,7 +880,7 @@
         ${site.repo_url ? `
           <p style="color:var(--ink-2);font-size:.9rem">Pushes to <code class="code">${esc(site.repo_branch)}</code> on
             <code class="code">${esc(site.repo_url)}</code> deploy automatically.</p>
-          <div class="first-user-banner" style="margin-bottom:1rem">🔄 <b>Auto-deploy is on by polling</b> — Hosting checks GitHub for new
+          <div class="first-user-banner" style="margin-bottom:1rem">🔄 <b>Auto-deploy is on by polling</b> - Hosting checks GitHub for new
             commits every couple of minutes and redeploys, so it works even when your server isn't reachable from the internet.
             <button class="btn small" id="checknow" style="margin-left:.4rem">Check now</button></div>
           <div style="margin-bottom:.6rem"><button class="btn small" id="mkhook">⚡ Create webhook automatically</button></div>
@@ -894,7 +894,7 @@
         e.target.disabled = true; e.target.textContent = 'Checking…';
         try {
           const r = await api(`/sites/${id}/check`, { method: 'POST' });
-          if (r.deploying) { toast(`New commit ${r.sha} — deploying`, 'ok'); setTimeout(() => pageSiteDetail(id, 'deploys'), 700); }
+          if (r.deploying) { toast(`New commit ${r.sha} - deploying`, 'ok'); setTimeout(() => pageSiteDetail(id, 'deploys'), 700); }
           else if (r.upToDate) toast(`Already up to date (${r.sha})`, 'ok');
           else toast(r.error || r.skipped || 'Nothing to do', r.error ? 'err' : '');
         } catch (err) { oops(err); }
@@ -932,7 +932,7 @@
         const domains = st.domains_configured || [];
         const eligible = domains.filter(d => !/\.sslip\.io$/i.test(d) && !/^\d+\.\d+\.\d+\.\d+$/.test(d));
         // Domains that Cloudflare already secures (active custom hostname) don't
-        // need a Let's Encrypt cert — reflect that instead of "no certificate".
+        // need a Let's Encrypt cert - reflect that instead of "no certificate".
         const cfActiveHosts = (cf && cf.enabled ? (cf.hostnames || []) : []).filter(h => h.active);
         const cfActive = cfActiveHosts.map(h => h.hostname);
         const cfCert = cfActiveHosts.find(h => h.ssl_detail && h.ssl_detail.expires_on);
@@ -943,8 +943,8 @@
             <span class="k">Status</span><span class="v">${statusHtml}</span>
             ${st.not_after ? `<span class="k">Expires</span><span class="v">${fmtDate(st.not_after)} (${st.daysLeft}d)</span>`
               : (cfCert ? `<span class="k">Expires</span><span class="v">${fmtDate(cfCert.ssl_detail.expires_on)} · renews automatically</span>` : '')}
-            ${st.issuer ? `<span class="k">Issuer</span><span class="v">${esc(st.issuer)}${st.staging ? ' — staging (not trusted by browsers)' : ''}</span>` : ''}
-            <span class="k">Domains</span><span class="v">${domains.length ? domains.map(esc).join(', ') : '<span style="color:var(--warn)">none — add a custom domain in Settings first</span>'}</span>
+            ${st.issuer ? `<span class="k">Issuer</span><span class="v">${esc(st.issuer)}${st.staging ? ' - staging (not trusted by browsers)' : ''}</span>` : ''}
+            <span class="k">Domains</span><span class="v">${domains.length ? domains.map(esc).join(', ') : '<span style="color:var(--warn)">none - add a custom domain in Settings first</span>'}</span>
           </div>
           ${!eligible.length ? `<div class="first-user-banner">Add a <b>real custom domain</b> you control (Settings → Domains) to get a certificate. The free <code class="code">.sslip.io</code> address can't be certified.</div>` : `
             ${st.status === 'pending' && st.challenge.length ? `
@@ -968,7 +968,7 @@
                 <label style="display:flex;align-items:center;gap:.4rem;margin-left:.4rem;font-size:.85rem;color:var(--ink-2)">
                   <input type="checkbox" id="sslauto" style="width:auto" ${st.auto_renew ? 'checked' : ''}> Auto-renew (re-stage TXT ~30d before expiry)</label>
               </div>
-              <p style="color:var(--ink-3);font-size:.8rem;margin-top:.8rem">Uses Let's Encrypt with DNS-01 verification — no inbound access needed, so it works behind NAT. Point your domain's A/AAAA records at this server, then get a certificate.</p>`}
+              <p style="color:var(--ink-3);font-size:.8rem;margin-top:.8rem">Uses Let's Encrypt with DNS-01 verification - no inbound access needed, so it works behind NAT. Point your domain's A/AAAA records at this server, then get a certificate.</p>`}
           `}`;
         wireSsl(st);
       };
@@ -976,7 +976,7 @@
         const b = sslBody();
         b.querySelector('#sslrequest')?.addEventListener('click', async (e) => {
           e.target.disabled = true; e.target.textContent = 'Creating order…';
-          try { await api(`/sites/${id}/ssl/request`, { method: 'POST' }); toast('Order created — add the DNS TXT records shown', 'ok'); load(); }
+          try { await api(`/sites/${id}/ssl/request`, { method: 'POST' }); toast('Order created - add the DNS TXT records shown', 'ok'); load(); }
           catch (err) { oops(err); load(); }
         });
         b.querySelector('#sslverify')?.addEventListener('click', async (e) => {
@@ -1018,12 +1018,12 @@
           <span class="k">Port</span><span class="v">${site.sftp.port}</span>
           <span class="k">Username</span><span class="v">${esc(me.email)}+${esc(site.slug)} <button class="cp" style="background:none;border:none;cursor:pointer;color:var(--ink-3)" onclick="_copy('${esc(me.email)}+${esc(site.slug)}', 'Username copied')" title="copy">⧉</button></span>
           <span class="k">Password</span><span class="v">your account password</span>
-          <span class="k">Your files are in</span><span class="v">/ (you land directly in this site — no other sites are visible)</span>
+          <span class="k">Your files are in</span><span class="v">/ (you land directly in this site - no other sites are visible)</span>
         </div>
         <div class="copybox" style="margin-top:.8rem"><code>sftp -P ${site.sftp.port} ${esc(me.email)}+${esc(site.slug)}@${esc(site.sftp.host)}</code>
           <button class="cp" onclick="_copy('sftp -P ${site.sftp.port} ${esc(me.email)}+${esc(site.slug)}@${esc(site.sftp.host)}')">⧉</button></div>
         <span class="help">The <code class="code">+${esc(site.slug)}</code> on the username scopes the session to <b>this site only</b>. Drop your website files straight into the root.
-          ${site.repo_url ? '<b>Note:</b> this site deploys from Git — a redeploy overwrites uploaded files.' : ''}</span>
+          ${site.repo_url ? '<b>Note:</b> this site deploys from Git - a redeploy overwrites uploaded files.' : ''}</span>
       </div>`);
       body.appendChild(card);
       const q=(sel)=>body.querySelector(sel);
@@ -1036,7 +1036,7 @@
           const { entries } = await api(`/sites/${id}/files?path=${encodeURIComponent(cwd)}`);
           list.innerHTML = `<table class="tbl">
             ${cwd ? `<tr class="frow" data-up="1"><td>📁 <a href="#">..</a></td><td></td><td></td></tr>` : ''}
-            ${entries.length || cwd ? '' : '<tr><td colspan="3" style="color:var(--ink-3);padding:1.2rem;text-align:center">Empty — drop files above to get started.</td></tr>'}
+            ${entries.length || cwd ? '' : '<tr><td colspan="3" style="color:var(--ink-3);padding:1.2rem;text-align:center">Empty - drop files above to get started.</td></tr>'}
             ${entries.map(e => `<tr>
               <td>${e.dir ? '📁' : '📄'} ${e.dir ? `<a href="#" class="fdir" data-name="${esc(e.name)}">${esc(e.name)}</a>` : esc(e.name)}</td>
               <td style="color:var(--ink-3)">${e.dir ? '' : fmtBytes(e.size)}</td>
@@ -1126,7 +1126,7 @@
           <div class="formrow">
             <label class="field"><span class="lbl">Branch</span><input type="text" name="repo_branch" value="${esc(site.repo_branch)}"></label>
             <label class="field"><span class="lbl">Access token</span>
-              <input type="password" name="repo_token" placeholder="${site.has_repo_token ? '••••••• (saved — type to replace)' : 'ghp_… (optional)'}"></label>
+              <input type="password" name="repo_token" placeholder="${site.has_repo_token ? '••••••• (saved - type to replace)' : 'ghp_… (optional)'}"></label>
           </div>
           <label class="field"><span class="lbl">Domains <span style="font-weight:400">(comma-separated)</span></span>
             <input type="text" name="domains" value="${esc(site.domains.join(', '))}" placeholder="www.example.com, example.com">
@@ -1155,7 +1155,7 @@
           domains: fd.domains.split(',').map(d => d.trim()).filter(Boolean), env_vars,
         };
         if (fd.repo_token) bodyData.repo_token = fd.repo_token;
-        try { await api(`/sites/${id}`, { method: 'PATCH', body: bodyData }); toast('Settings saved — redeploy to apply', 'ok'); pageSiteDetail(id, 'settings'); }
+        try { await api(`/sites/${id}`, { method: 'PATCH', body: bodyData }); toast('Settings saved - redeploy to apply', 'ok'); pageSiteDetail(id, 'settings'); }
         catch (err) { oops(err); }
       });
 
@@ -1167,11 +1167,11 @@
       const renderCf = (d) => {
         const box = cfCard.querySelector('#cfbody');
         if (!d.enabled) {
-          box.innerHTML = `Cloudflare for SaaS isn't enabled on this platform. Custom domains still work by pointing an A/AAAA record at this server — ask an admin to enable Cloudflare for SaaS (Administration → Cloudflare) to route them through Cloudflare automatically.`;
+          box.innerHTML = `Cloudflare for SaaS isn't enabled on this platform. Custom domains still work by pointing an A/AAAA record at this server - ask an admin to enable Cloudflare for SaaS (Administration → Cloudflare) to route them through Cloudflare automatically.`;
           return;
         }
         if (!d.hostnames.length) {
-          box.innerHTML = `Add a real custom domain above and save — it'll be registered with Cloudflare and the exact DNS records to add will appear here.`;
+          box.innerHTML = `Add a real custom domain above and save - it'll be registered with Cloudflare and the exact DNS records to add will appear here.`;
           return;
         }
         box.classList.remove('empty');
@@ -1179,7 +1179,7 @@
             <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.4rem"><b class="mono">${esc(hn.hostname)}</b> ${cfStatusPill(hn)}</div>
             ${cfChecklist(hn)}
             ${hn.last_error ? `<div style="color:var(--bad);font-size:.85rem;margin-bottom:.4rem">${esc(hn.last_error)}</div>` : ''}
-            ${hn.active ? '' : `<div style="color:var(--ink-2);font-size:.85rem;margin-bottom:.4rem">Add these at your domain's DNS provider — the <b>CNAME</b> routes traffic; the <b>TXT</b> completes ownership verification:</div>
+            ${hn.active ? '' : `<div style="color:var(--ink-2);font-size:.85rem;margin-bottom:.4rem">Add these at your domain's DNS provider - the <b>CNAME</b> routes traffic; the <b>TXT</b> completes ownership verification:</div>
             ${cfRecordsTable(cfRecordRows(hn, d.fallback_origin))}`}
           </div>`).join('') + `<button class="btn small" id="cfsync">↻ Refresh status</button>`;
         cfCard.querySelector('#cfsync')?.addEventListener('click', async (e) => {
@@ -1190,7 +1190,7 @@
       };
       const loadCf = () => { cfCard.querySelector('#cfbody').textContent = 'Loading…'; return api(`/sites/${id}/domains/cf`).then((d) => { renderCf(d); return d; }).catch((e) => { cardError(cfCard.querySelector('#cfbody'), e.message || 'Could not load Cloudflare routing status.', loadCf); return null; }); };
       // While a custom domain isn't fully active, poll: pull fresh status from
-      // Cloudflare (sync) then re-render — so once the user adds the CNAME/TXT,
+      // Cloudflare (sync) then re-render - so once the user adds the CNAME/TXT,
       // the card flips to "active" with the issued-cert data on its own. Stops
       // when everything is active, after ~5 min, or when the card is gone.
       loadCf().then((first) => {
@@ -1204,7 +1204,7 @@
           if (d && d.hostnames && d.hostnames.length && d.hostnames.every(hn => hn.active)) clearInterval(cfPoll);
         }, 15000);
       });
-      // Custom 404: no UI — the edge proxy automatically serves a 404.html from
+      // Custom 404: no UI - the edge proxy automatically serves a 404.html from
       // the site's directory if the site ships one.
     }
   }
@@ -1220,7 +1220,7 @@
         pending:  ['queued', 'Awaiting DNS'],
         failed:   ['failed', 'Failed'],
         none:     ['stopped', 'No certificate'],
-        ineligible: ['stopped', '—'],
+        ineligible: ['stopped', '-'],
       };
       const [cls, text] = map[c.state] || ['stopped', c.state];
       return `<span class="pill ${cls}"><span class="dot"></span>${text}</span>`;
@@ -1228,7 +1228,7 @@
     const c = h(`
       <div>
         <div class="page-head"><h1>Certificates</h1>
-          <div class="sub">SSL/TLS status across your sites — Let's Encrypt via DNS-01.</div></div>
+          <div class="sub">SSL/TLS status across your sites - Let's Encrypt via DNS-01.</div></div>
         ${!available ? `<div class="card"><div class="empty">SSL support isn't installed (the <code class="code">acme-client</code> package). Run <code class="code">npm install</code> and restart.</div></div>` : `
         <div class="tiles">
           <div class="tile"><div class="t-label">Active</div><div class="t-value" style="color:var(--good)">${summary.active}</div></div>
@@ -1242,10 +1242,10 @@
             <tr><th>Site</th><th>Domains</th><th>Status</th><th>Expires</th><th>Auto-renew</th><th></th></tr>
             ${certs.map(ct => `<tr>
               <td><b>${esc(ct.name)}</b>${ct.owner_email ? `<br><span style="color:var(--ink-3);font-size:.8rem">${esc(ct.owner_email)}</span>` : ''}</td>
-              <td class="mono">${ct.domains.length ? ct.domains.map(esc).join('<br>') : '<span style="color:var(--ink-3)">— no custom domain</span>'}</td>
+              <td class="mono">${ct.domains.length ? ct.domains.map(esc).join('<br>') : '<span style="color:var(--ink-3)">- no custom domain</span>'}</td>
               <td>${badge(ct)}</td>
-              <td>${ct.not_after ? `${fmtDate(ct.not_after)}${ct.daysLeft !== null ? `<br><span style="color:var(--ink-3);font-size:.8rem">${ct.daysLeft}d left</span>` : ''}` : '<span style="color:var(--ink-3)">—</span>'}</td>
-              <td>${ct.state === 'ineligible' ? '<span style="color:var(--ink-3)">—</span>' : (ct.auto_renew ? '✓' : '✕')}</td>
+              <td>${ct.not_after ? `${fmtDate(ct.not_after)}${ct.daysLeft !== null ? `<br><span style="color:var(--ink-3);font-size:.8rem">${ct.daysLeft}d left</span>` : ''}` : '<span style="color:var(--ink-3)">-</span>'}</td>
+              <td>${ct.state === 'ineligible' ? '<span style="color:var(--ink-3)">-</span>' : (ct.auto_renew ? '✓' : '✕')}</td>
               <td><a class="btn small" href="#/sites/${ct.site_id}">Manage →</a></td></tr>`).join('')}
           </table></div>
         </div>`}
@@ -1259,7 +1259,7 @@
     const up = me.role === 'admin' ? await api('/wireguard/uplink').catch(() => null) : null;
 
     const bgpCell = (p) => {
-      if (!p.asn) return '<span style="color:var(--ink-3)">—</span>';
+      if (!p.asn) return '<span style="color:var(--ink-3)">-</span>';
       if (!p.bgp_enabled) return pill('stopped').replace('stopped', 'off');
       const ses = bgp?.sessions?.[p.id];
       if (!bgp?.available) return pill('queued').replace('queued', 'configured');
@@ -1271,7 +1271,7 @@
     const c = h(`
       <div>
         <div class="page-head"><h1>Network / VPN</h1>
-          <div class="sub">WireGuard tunnels — route your own IPv6 block or IPv4 space through this server, and announce it with your ASN.</div>
+          <div class="sub">WireGuard tunnels - route your own IPv6 block or IPv4 space through this server, and announce it with your ASN.</div>
           <div class="grow"></div><button class="btn primary" id="newpeer">＋ New peer</button></div>
 
         <div class="card"><h2>WireGuard server</h2>
@@ -1279,8 +1279,8 @@
             <span class="k">Endpoint</span><span class="v">${esc(server.endpoint)}:${server.listen_port}</span>
             <span class="k">Public key</span><span class="v">${esc(server.public_key)}</span>
             <span class="k">Tunnel subnets</span><span class="v">${esc(server.tunnel_v4)} · ${esc(server.tunnel_v6)}</span>
-            <span class="k">BGP (BIRD2)</span><span class="v">${server.server_asn ? `AS${esc(server.server_asn.replace(/^AS/i, ''))}${bgp?.available ? ' · daemon running' : ' · daemon not detected'}` : '<span style="color:var(--warn)">server ASN not set — BGP sessions disabled</span>'}</span>
-            <span class="k">Site IPv6 pool</span><span class="v">${server.site_v6_pool ? `${esc(server.site_v6_pool)} — every site auto-gets a dedicated address` : '<span style="color:var(--ink-3)">not set — sites share the server address</span>'}</span>
+            <span class="k">BGP (BIRD2)</span><span class="v">${server.server_asn ? `AS${esc(server.server_asn.replace(/^AS/i, ''))}${bgp?.available ? ' · daemon running' : ' · daemon not detected'}` : '<span style="color:var(--warn)">server ASN not set - BGP sessions disabled</span>'}</span>
+            <span class="k">Site IPv6 pool</span><span class="v">${server.site_v6_pool ? `${esc(server.site_v6_pool)} - every site auto-gets a dedicated address` : '<span style="color:var(--ink-3)">not set - sites share the server address</span>'}</span>
           </div>
           ${me.role === 'admin' ? `<div style="margin-top:1rem;display:flex;gap:.6rem;flex-wrap:wrap">
             <button class="btn small" id="wgsettings">⚙ Server settings</button>
@@ -1289,13 +1289,13 @@
         </div>
 
         ${me.role === 'admin' ? `
-        <div class="card"><h2>Uplink — provider BGP tunnel
+        <div class="card"><h2>Uplink - provider BGP tunnel
           <span class="hint">${up?.enabled ? (up.status.wg.up ? (up.status.wg.handshake ? `connected · handshake ${esc(up.status.wg.handshake)}` : 'interface up · no handshake yet') : 'enabled · tunnel down') : (up?.configured.wg ? 'disconnected' : 'not configured')}</span></h2>
           <p style="color:var(--ink-2);font-size:.9rem;margin:0 0 1rem">
             Using a service like <b>BGPTunnel (iFog)</b> or another upstream? There <i>this server</i> is the
             WireGuard <b>client</b>: download the <b>WireGuard config</b> and the <b>BIRD config</b> from your
             provider's dashboard and paste them below. The server connects out, announces your prefix from
-            your ASN, and your IPv6 block lands here — ready for the Site IPv6 pool.</p>
+            your ASN, and your IPv6 block lands here - ready for the Site IPv6 pool.</p>
           ${up?.status?.sessions?.length ? `<div class="kv" style="margin-bottom:1rem">
             ${up.status.sessions.map(s => `<span class="k">Session ${esc(s.name)}</span><span class="v">${esc(s.info || s.state)}</span>`).join('')}
           </div>` : ''}
@@ -1306,7 +1306,7 @@
                 <span class="help">Upload: <input type="file" class="upfile" data-target="wg_conf" accept=".conf,.txt" style="width:auto;display:inline"></span></label>
               <label class="field"><span class="lbl">BIRD config (from provider)</span>
                 <textarea name="bird_conf" rows="7" placeholder="protocol bgp … { local … as YOURASN; neighbor … as THEIRASN; }">${esc(up?.bird_conf || '')}</textarea>
-                <span class="help">Upload: <input type="file" class="upfile" data-target="bird_conf" accept=".conf,.txt" style="width:auto;display:inline"> — parse-checked before apply; router id / kernel bits are merged safely.</span></label>
+                <span class="help">Upload: <input type="file" class="upfile" data-target="bird_conf" accept=".conf,.txt" style="width:auto;display:inline"> - parse-checked before apply; router id / kernel bits are merged safely.</span></label>
             </div>
             <div style="display:flex;gap:.6rem;flex-wrap:wrap">
               <button type="submit" class="btn primary">Save &amp; connect</button>
@@ -1323,8 +1323,8 @@
               <td><b>${esc(p.name)}</b></td>
               ${me.role === 'admin' ? `<td>${esc(p.owner_email || '')}</td>` : ''}
               <td class="mono">${esc(p.addr_v4)}<br>${esc(p.addr_v6)}</td>
-              <td class="mono">${[p.routed_v6, p.routed_v4].filter(Boolean).map(esc).join('<br>') || '—'}</td>
-              <td class="mono">${esc(p.asn || '—')}</td>
+              <td class="mono">${[p.routed_v6, p.routed_v4].filter(Boolean).map(esc).join('<br>') || '-'}</td>
+              <td class="mono">${esc(p.asn || '-')}</td>
               <td>${bgpCell(p)}</td>
               <td style="white-space:nowrap">
                 <a class="btn small" href="/api/wireguard/peers/${p.id}/config" download title="WireGuard client config">⬇ conf</a>
@@ -1337,10 +1337,10 @@
 
         <div class="card"><h2>How it works</h2>
           <ol style="color:var(--ink-2);font-size:.9rem;line-height:1.9;margin:0;padding-left:1.2rem">
-            <li>Create a peer — optionally enter <b>your own IPv6 block</b> (e.g. <code class="code">2a0e:8f02:f01f::/48</code>), extra IPv4 space, and your <b>ASN</b>.</li>
+            <li>Create a peer - optionally enter <b>your own IPv6 block</b> (e.g. <code class="code">2a0e:8f02:f01f::/48</code>), extra IPv4 space, and your <b>ASN</b>.</li>
             <li>Download the <code class="code">.conf</code> and import it into any WireGuard client (<code class="code">wg-quick up ./file.conf</code>).</li>
-            <li>Your prefixes are routed through the tunnel — traffic to them arrives at your machine.</li>
-            <li>Hit <b>BGP</b> on the peer to run a real BGP session over the tunnel: the server (BIRD2) peers with your tunnel address and accepts your registered prefixes. Download the ready-made config for your side, or upload your own <code class="code">bird.conf</code> — it's parse-checked before it goes live.</li>
+            <li>Your prefixes are routed through the tunnel - traffic to them arrives at your machine.</li>
+            <li>Hit <b>BGP</b> on the peer to run a real BGP session over the tunnel: the server (BIRD2) peers with your tunnel address and accepts your registered prefixes. Download the ready-made config for your side, or upload your own <code class="code">bird.conf</code> - it's parse-checked before it goes live.</li>
           </ol>
         </div>
       </div>`);
@@ -1370,7 +1370,7 @@
         try {
           const r = await api('/wireguard/peers', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) });
           m.remove();
-          toast(`Peer created${r.wireguard?.applied ? ' and applied live' : ' — config saved'}`, 'ok');
+          toast(`Peer created${r.wireguard?.applied ? ' and applied live' : ' - config saved'}`, 'ok');
           pageNetwork();
         } catch (err) { oops(err); }
       });
@@ -1388,7 +1388,7 @@
           wg_conf: form.wg_conf.value, bird_conf: form.bird_conf.value,
         }});
         (r.notes || []).forEach(n => toast(n));
-        toast(r.wireguard?.up ? 'Uplink saved — tunnel up' : 'Uplink saved', 'ok');
+        toast(r.wireguard?.up ? 'Uplink saved - tunnel up' : 'Uplink saved', 'ok');
         pageNetwork();
       } catch (err) { oops(err); }
     });
@@ -1411,7 +1411,7 @@
       const ses = bgp?.sessions?.[p.id];
       const sesLine = (f) => ses?.[f] ? `<span class="k">Session ${f}</span><span class="v">${esc(ses[f].info || ses[f].state)}</span>` : '';
       const m = modal(`
-        <h2>BGP over the tunnel — ${esc(p.name)}</h2>
+        <h2>BGP over the tunnel - ${esc(p.name)}</h2>
         <div class="kv" style="margin-bottom:1rem">
           <span class="k">Your ASN</span><span class="v">${esc(p.asn)}</span>
           <span class="k">Server ASN</span><span class="v">${server.server_asn ? esc(server.server_asn) : '<span style="color:var(--warn)">not set (admin: Server settings)</span>'}</span>
@@ -1421,14 +1421,14 @@
         </div>
         <p style="color:var(--ink-2);font-size:.88rem;margin:0 0 1rem">
           When enabled, the server runs a BIRD2 session against your tunnel address and
-          accepts <b>only your registered prefixes</b>. Run BIRD on your side too —
-          <a href="/api/wireguard/peers/${p.id}/bird" download>download your ready-made bird.conf</a> —
+          accepts <b>only your registered prefixes</b>. Run BIRD on your side too -
+          <a href="/api/wireguard/peers/${p.id}/bird" download>download your ready-made bird.conf</a> -
           or upload your own config below.</p>
         <form id="bgpf">
           <label class="field" style="display:flex;align-items:center;gap:.5rem">
             <input type="checkbox" name="bgp_enabled" style="width:auto" ${p.bgp_enabled ? 'checked' : ''}>
             <span class="lbl" style="margin:0">Enable server-side BGP session for this peer</span></label>
-          <label class="field"><span class="lbl">Custom BIRD config <span style="font-weight:400">(optional — included on the server, parse-checked before apply)</span></span>
+          <label class="field"><span class="lbl">Custom BIRD config <span style="font-weight:400">(optional - included on the server, parse-checked before apply)</span></span>
             <textarea name="bird_custom" rows="8" placeholder="# e.g. tweak timers, add an extra protocol…&#10;# leave empty to use the auto-generated session">${esc(p.bird_custom || '')}</textarea>
             <span class="help">Or upload a file: <input type="file" id="birdfile" accept=".conf,.txt" style="width:auto;display:inline"></span></label>
           <div class="actions">
@@ -1453,7 +1453,7 @@
           const note = r.bird?.applied ? 'applied to BIRD live'
             : (r.validation?.checked === false && r.validation?.note) ? r.validation.note
             : (r.bird?.reason || 'saved');
-          toast(`BGP settings saved — ${note}`, 'ok');
+          toast(`BGP settings saved - ${note}`, 'ok');
           pageNetwork();
         } catch (err) { oops(err); }
       });
@@ -1475,7 +1475,7 @@
           </div>
           <label class="field"><span class="lbl">Server ASN <span style="font-weight:400">(enables BGP sessions over the tunnels)</span></span>
             <input type="text" name="server_asn" value="${esc(server.server_asn || '')}" placeholder="AS64512">
-            <span class="help">The ASN this server speaks BGP as. Peers' sessions peer against it; private range 64512–65534 is fine if you don't have a public one.</span></label>
+            <span class="help">The ASN this server speaks BGP as. Peers' sessions peer against it; private range 64512-65534 is fine if you don't have a public one.</span></label>
           <div class="formrow">
             <label class="field"><span class="lbl">Site IPv6 pool <span style="font-weight:400">(auto-delegation)</span></span>
               <input type="text" name="site_v6_pool" value="${esc(server.site_v6_pool || '')}" placeholder="2a0e:8f02:f01f:100::/64">
@@ -1601,7 +1601,7 @@
     const seenVia = st.seen.via_cloudflare;
     const lastVia = st.seen.last_via_at ? new Date(st.seen.last_via_at).toLocaleString() : null;
     const liveBadge = seenVia > 0
-      ? `<span class="pill live"><span class="dot"></span>active — ${seenVia.toLocaleString()} request${seenVia === 1 ? '' : 's'} via Cloudflare</span>`
+      ? `<span class="pill live"><span class="dot"></span>active - ${seenVia.toLocaleString()} request${seenVia === 1 ? '' : 's'} via Cloudflare</span>`
       : `<span class="pill queued"><span class="dot"></span>no Cloudflare traffic seen yet</span>`;
 
     const saas = await api('/cloudflare/saas').catch(() => ({}));
@@ -1609,14 +1609,14 @@
       const pill = hn.active
         ? '<span class="pill live"><span class="dot"></span>active</span>'
         : (hn.last_error ? '<span class="pill failed">error</span>' : `<span class="pill queued"><span class="dot"></span>${esc(hn.status || 'pending')}</span>`);
-      return `<tr><td class="mono">${esc(hn.hostname)}</td><td>${esc(hn.site_name || '')}</td><td>${pill}</td><td class="mono">${esc(hn.cname_target || '—')}</td></tr>`;
+      return `<tr><td class="mono">${esc(hn.hostname)}</td><td>${esc(hn.site_name || '')}</td><td>${pill}</td><td class="mono">${esc(hn.cname_target || '-')}</td></tr>`;
     }).join('');
     const saasHtml = `
       <div class="card">
         <h2>Cloudflare for SaaS <span class="hint">route users' own custom domains through Cloudflare</span></h2>
         <p style="color:var(--ink-2);font-size:.9rem;margin:.2rem 0 1rem">
           When a user adds their <b>own</b> domain to a site, the platform registers it as a Cloudflare
-          <b>custom hostname</b> under your zone and shows them a single <b>CNAME</b> to add — no TXT record
+          <b>custom hostname</b> under your zone and shows them a single <b>CNAME</b> to add - no TXT record
           needed (HTTP validation). Cloudflare then auto-issues the certificate and filters DDoS for it.
           Needs your <b>Zone ID</b> and a Cloudflare API token with
           <b>Zone → SSL and Certificates → Edit</b> and <b>Zone → DNS → Edit</b> on the zone, plus a
@@ -1641,7 +1641,7 @@
               <input type="text" name="origin_ip" value="${esc(saas.origin_ip || '')}" placeholder="this server's public IPv6 or IPv4">
               <span class="help">If set, the proxied fallback-origin DNS record (A/AAAA) is created for you. Leave blank to create it by hand.</span></label>
           </div>
-          <label class="field"><span class="lbl">API token ${saas.has_token ? '<span style="color:var(--good)">✓ stored — leave blank to keep</span>' : ''}</span>
+          <label class="field"><span class="lbl">API token ${saas.has_token ? '<span style="color:var(--good)">✓ stored - leave blank to keep</span>' : ''}</span>
             <input type="password" name="token" placeholder="${saas.has_token ? '•••••••• stored (type to replace)' : 'Cloudflare API token'}">
             <span class="help">Stored encrypted. Scope: Zone · SSL and Certificates · Edit <b>and</b> Zone · DNS · Edit for your zone.</span></label>
           <div style="display:flex;gap:.6rem;flex-wrap:wrap">
@@ -1656,14 +1656,14 @@
 
     const c = h(`
       <div>
-        <div class="page-head"><h1>Cloudflare — DDoS protection</h1>
-          <div class="sub">Put this platform's domain and its free per-site subdomains behind Cloudflare. Once the DNS is proxied, Cloudflare's always-on DDoS protection shields <b>every</b> site automatically — users do nothing.</div></div>
+        <div class="page-head"><h1>Cloudflare - DDoS protection</h1>
+          <div class="sub">Put this platform's domain and its free per-site subdomains behind Cloudflare. Once the DNS is proxied, Cloudflare's always-on DDoS protection shields <b>every</b> site automatically - users do nothing.</div></div>
 
         ${!st.host_is_real_domain ? `<div class="card" style="border-color:#5a3a12">
           <h2 style="color:var(--warn)">⚠ A real domain is required</h2>
           <p style="color:var(--ink-2);margin:.2rem 0 0">
             <code class="code">PUBLIC_HOST</code> is currently <b>${esc(st.public_host)}</b>. Cloudflare can only
-            proxy a real domain name — it can't sit in front of a bare IP address or an
+            proxy a real domain name - it can't sit in front of a bare IP address or an
             <code class="code">.sslip.io</code> hostname. Point <code class="code">PUBLIC_HOST</code>
             (and optionally <code class="code">SITE_BASE_DOMAIN</code>) at a domain you've added to
             Cloudflare, restart, then follow the steps below.</p>
@@ -1677,7 +1677,7 @@
             <span class="k">Trust Cloudflare headers</span><span class="v">
               <label style="display:inline-flex;align-items:center;gap:.5rem;cursor:pointer">
                 <input type="checkbox" id="cftrust" style="width:auto" ${st.trust ? 'checked' : ''} ${st.env_forced_off ? 'disabled' : ''}>
-                <span>${st.trust ? 'On — real visitor IP recovered from CF-Connecting-IP' : 'Off — using the direct socket address'}</span>
+                <span>${st.trust ? 'On - real visitor IP recovered from CF-Connecting-IP' : 'Off - using the direct socket address'}</span>
               </label>
               ${st.env_forced_off ? '<span class="help">Forced off by <code class="code">TRUST_CLOUDFLARE=0</code>.</span>' : '<span class="help">Only honored when the connection actually comes from a Cloudflare IP, so it cannot be spoofed. Safe to leave on.</span>'}
             </span>
@@ -1690,13 +1690,13 @@
         <div class="card">
           <h2>Set it up (once, in your Cloudflare dashboard)</h2>
           <ol style="color:var(--ink-2);font-size:.92rem;line-height:1.9;margin:0;padding-left:1.2rem">
-            <li><b>DNS records — proxied.</b> In Cloudflare → <i>DNS → Records</i> for <b>${esc(st.public_host)}</b>, make sure these exist with <b>Proxy status: Proxied (orange cloud)</b>:
+            <li><b>DNS records - proxied.</b> In Cloudflare → <i>DNS → Records</i> for <b>${esc(st.public_host)}</b>, make sure these exist with <b>Proxy status: Proxied (orange cloud)</b>:
               <ul style="margin:.3rem 0;padding-left:1.1rem">
                 <li><code class="code">A</code> / <code class="code">AAAA</code> &nbsp;<b>${esc(st.public_host)}</b> → your server's public IPv4 / IPv6</li>
                 <li><code class="code">A</code> / <code class="code">AAAA</code> &nbsp;<b>${esc(wildcard)}</b> → the same server IPs &nbsp;<span style="color:var(--ink-3)">(this is what protects every free <code class="code">&lt;site&gt;.${esc(st.site_base_domain)}</code> link)</span></li>
               </ul>
-              The orange cloud is the whole thing — a proxied record automatically gets Cloudflare's unmetered L3/4 + HTTP DDoS protection. A grey cloud (DNS-only) does <b>not</b>.</li>
-            <li><b>SSL/TLS mode = Full.</b> Cloudflare → <i>SSL/TLS → Overview</i> → <b>Full</b>. This server already answers HTTPS on port ${st.tls_port} (its Let's Encrypt / default cert), so Cloudflare↔origin stays encrypted. <span style="color:var(--ink-3)">(Avoid "Flexible" — it leaves the origin leg unencrypted.)</span></li>
+              The orange cloud is the whole thing - a proxied record automatically gets Cloudflare's unmetered L3/4 + HTTP DDoS protection. A grey cloud (DNS-only) does <b>not</b>.</li>
+            <li><b>SSL/TLS mode = Full.</b> Cloudflare → <i>SSL/TLS → Overview</i> → <b>Full</b>. This server already answers HTTPS on port ${st.tls_port} (its Let's Encrypt / default cert), so Cloudflare↔origin stays encrypted. <span style="color:var(--ink-3)">(Avoid "Flexible" - it leaves the origin leg unencrypted.)</span></li>
             <li><b>Wildcard certificate.</b> Cloudflare's free Universal SSL covers <code class="code">${esc(st.site_base_domain)}</code> and one level of wildcard (<code class="code">${esc(wildcard)}</code>). If your free-subdomain base is deeper than one label, enable <i>Advanced Certificate Manager</i> for the wildcard.</li>
             <li><b>That's it.</b> Reload a site over <code class="code">https://&lt;site&gt;.${esc(st.site_base_domain)}${esc(tlsSuffix)}</code>. When traffic starts arriving through Cloudflare the <b>Status</b> badge above flips to <span style="color:var(--good)">active</span>. Optionally turn on <i>Security → Bots → Bot Fight Mode</i> and add a rate-limiting rule.</li>
           </ol>
@@ -1707,10 +1707,10 @@
           <p style="color:var(--ink-2);font-size:.9rem;margin:.2rem 0 .6rem">
             Cloudflare proxies <b>HTTP/HTTPS websites</b> on the standard ports, so it protects the public sites served by the edge proxy. It does <b>not</b> front:</p>
           <ul style="color:var(--ink-2);font-size:.9rem;line-height:1.8;margin:0;padding-left:1.2rem">
-            <li>the <b>dashboard/API</b> (port ${st.proxy_port === 80 ? '3000' : '3000'}), <b>SFTP</b>, and <b>WireGuard</b> — those are non-HTTP or admin-only; leave them off Cloudflare (or use a Cloudflare Tunnel separately).</li>
-            <li><b>a site's dedicated IPv6 hit directly</b> — pointing an <code class="code">AAAA</code> straight at a site's own address bypasses Cloudflare. For a domain you want protected, CNAME/point it at the Cloudflare-proxied name instead of the raw IPv6.</li>
+            <li>the <b>dashboard/API</b> (port ${st.proxy_port === 80 ? '3000' : '3000'}), <b>SFTP</b>, and <b>WireGuard</b> - those are non-HTTP or admin-only; leave them off Cloudflare (or use a Cloudflare Tunnel separately).</li>
+            <li><b>a site's dedicated IPv6 hit directly</b> - pointing an <code class="code">AAAA</code> straight at a site's own address bypasses Cloudflare. For a domain you want protected, CNAME/point it at the Cloudflare-proxied name instead of the raw IPv6.</li>
           </ul>
-          <p style="color:var(--ink-3);font-size:.85rem;margin:.6rem 0 0">Users' <i>own</i> custom domains are handled separately by <b>Cloudflare for SaaS</b> below — the platform registers each one and hands the user a single CNAME so their domain routes through Cloudflare too.</p>
+          <p style="color:var(--ink-3);font-size:.85rem;margin:.6rem 0 0">Users' <i>own</i> custom domains are handled separately by <b>Cloudflare for SaaS</b> below - the platform registers each one and hands the user a single CNAME so their domain routes through Cloudflare too.</p>
         </div>
 
         ${saasHtml}
@@ -1729,7 +1729,7 @@
       e.target.disabled = true; e.target.textContent = '↻ Refreshing…';
       try {
         const r = await api('/cloudflare/refresh', { method: 'POST' });
-        toast(`Ranges refreshed — ${r.v4count} IPv4 · ${r.v6count} IPv6`, 'ok');
+        toast(`Ranges refreshed - ${r.v4count} IPv4 · ${r.v6count} IPv6`, 'ok');
         pageCloudflare();
       } catch (err) { oops(err); e.target.disabled = false; e.target.textContent = '↻ Refresh from Cloudflare'; }
     });
@@ -1772,7 +1772,7 @@
     const render = (b) => {
       const el = box(); el.classList.remove('empty');
       if (!b.configured) {
-        el.innerHTML = `<p style="color:var(--ink-2)">Billing isn't set up on this server — everything is free with no limits. <span style="color:var(--ink-3)">(Admin: configure Lemon Squeezy keys in <code class="code">.env</code> to enable per-site billing.)</span></p>`;
+        el.innerHTML = `<p style="color:var(--ink-2)">Billing isn't set up on this server - everything is free with no limits. <span style="color:var(--ink-3)">(Admin: configure Lemon Squeezy keys in <code class="code">.env</code> to enable per-site billing.)</span></p>`;
         return;
       }
       if (b.subscribed) {
@@ -1790,7 +1790,7 @@
         return;
       }
       el.innerHTML = `
-        <p style="color:var(--ink-2)">Hosting is <b>pay per site</b> — <b>${esc(b.price_label)}</b>. Subscribe once; every website you create is added to your bill, and deleting one lowers it automatically.</p>
+        <p style="color:var(--ink-2)">Hosting is <b>pay per site</b> - <b>${esc(b.price_label)}</b>. Subscribe once; every website you create is added to your bill, and deleting one lowers it automatically.</p>
         <button class="btn primary" id="sub">Subscribe</button>`;
       el.querySelector('#sub').addEventListener('click', async (e) => {
         e.target.disabled = true;
@@ -1813,7 +1813,7 @@
     const render2fa = (st) => {
       const b = box(); b.classList.remove('empty');
       if (st.enabled) {
-        b.innerHTML = `<p style="color:var(--good)">✓ Two-factor is <b>on</b> — ${st.backup_codes_left} backup code(s) left.</p>
+        b.innerHTML = `<p style="color:var(--good)">✓ Two-factor is <b>on</b> - ${st.backup_codes_left} backup code(s) left.</p>
           <label class="field" style="max-width:280px"><span class="lbl">Password (to turn it off)</span><input type="password" id="dpw"></label>
           <button class="btn danger" id="disable" style="margin-top:.4rem">Disable 2FA</button>`;
         b.querySelector('#disable').addEventListener('click', async () => {
@@ -1837,7 +1837,7 @@
           b.querySelector('#enable').addEventListener('click', async () => {
             try {
               const r = await api('/auth/2fa/enable', { method: 'POST', body: { code: b.querySelector('#ecode').value } });
-              b.innerHTML = `<p style="color:var(--good)">✓ Two-factor is now on. <b>Save these backup codes</b> somewhere safe — each works once if you lose your device:</p>
+              b.innerHTML = `<p style="color:var(--good)">✓ Two-factor is now on. <b>Save these backup codes</b> somewhere safe - each works once if you lose your device:</p>
                 <div class="copybox"><code style="white-space:pre-wrap;line-height:1.8">${r.backup_codes.map(esc).join('   ')}</code>
                   <button class="cp" onclick="_copy('${r.backup_codes.join(' ')}')">⧉</button></div>
                 <button class="btn" id="done" style="margin-top:.6rem">Done</button>`;

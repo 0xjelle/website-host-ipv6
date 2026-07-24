@@ -2,7 +2,7 @@
 
 **A self-hosted, IPv6-first hosting platform.** Host static HTML sites and Node.js
 apps, auto-deploy them from GitHub on every push to `main`, and bring **your own
-IPv6 block + ASN** — either by tunneling clients to this server, or by connecting
+IPv6 block + ASN** - either by tunneling clients to this server, or by connecting
 the server out to a BGP tunnel provider like **BGPTunnel (iFog)**. Every site can
 get its own dedicated IPv6 address from your block, and everything is managed
 from a dark-mode dashboard with a full admin area.
@@ -15,7 +15,7 @@ from a dark-mode dashboard with a full admin area.
 [Configuration](#configuration)
 
 **Branches:** `main` is stable; `beta` carries the newest dashboard work
-(extra charts, UI polish) — install it with `git clone -b beta …` or switch an
+(extra charts, UI polish) - install it with `git clone -b beta …` or switch an
 existing install with `git -C /opt/hosting checkout beta && systemctl restart hosting`.
 
 ```
@@ -36,40 +36,40 @@ existing install with `git -C /opt/hosting checkout beta && systemctl restart ho
 
 ## Features
 
-- **Sites** — static (HTML/CSS/JS, optional build step like `npm run build`) and
+- **Sites** - static (HTML/CSS/JS, optional build step like `npm run build`) and
   **Node.js apps** (supervised processes with auto-restart, env vars, runtime logs).
-- **GitHub auto-deploy** — connect any repo; Hosting gives you a webhook URL +
+- **GitHub auto-deploy** - connect any repo; Hosting gives you a webhook URL +
   secret. Pushes to your chosen branch (default `main`) trigger
   clone → install → build → go-live. Deploy logs for every run. Private repos
   supported via access token.
-- **Built-in edge proxy** — routes by `Host` header **and by destination
+- **Built-in edge proxy** - routes by `Host` header **and by destination
   IPv6 address**. Every site gets a free `<slug>.<your-host>` domain, plus any
   custom domains you add. When `PUBLIC_HOST` is a bare IP, the free domain uses
   [sslip.io](https://sslip.io) wildcard DNS (`<slug>.<ip>.sslip.io`) so it
   works on your LAN with no DNS setup; hitting the bare IP lists all sites.
   **Stopping a site** takes it off its public custom domains and dedicated IPv6,
-  but it stays reachable on this free `<slug>.<host>` link — so a stopped site
+  but it stays reachable on this free `<slug>.<host>` link - so a stopped site
   works as a local staging copy you can test before making it live again. Static
   files keep serving; Node apps **keep running** (and are resumed on reboot),
   just without any public exposure.
-- **IPv6 auto-delegation** — set a *Site IPv6 pool* (a chunk of your own IPv6
+- **IPv6 auto-delegation** - set a *Site IPv6 pool* (a chunk of your own IPv6
   block routed to this server, e.g. a `/64`) and **every site automatically
   gets its own dedicated IPv6 address** out of it: allocated on creation,
   attached to the server's interface, released on deletion, shown in the
-  dashboard. Point AAAA records straight at a site's address — no shared IP,
+  dashboard. Point AAAA records straight at a site's address - no shared IP,
   no Host-header dependence.
-- **WireGuard tunnels** — one click creates a peer with generated keys
+- **WireGuard tunnels** - one click creates a peer with generated keys
   (Curve25519 via Node's crypto, no shelling out), a tunnel IPv4 + IPv6, and a
   downloadable `.conf`. Enter **your own IPv6 block** (e.g. `2a0e:xxxx::/48`)
   and/or extra IPv4 space and the whole prefix is routed to you through the tunnel.
-- **BGP over the tunnel (BIRD2)** — enable a real server-side BGP session per
+- **BGP over the tunnel (BIRD2)** - enable a real server-side BGP session per
   peer: your ASN peers with the server's ASN across the WireGuard tunnel,
   with strict per-peer prefix filters. Download a ready-made BIRD2 config for
-  your side, or **upload your own bird.conf** — parse-checked before it goes
+  your side, or **upload your own bird.conf** - parse-checked before it goes
   live, with session state shown in the dashboard.
-- **Pretty dashboard** — overview with stat tiles and recent deployments, site
+- **Pretty dashboard** - overview with stat tiles and recent deployments, site
   detail pages with tabs (deployments, GitHub, runtime logs, settings).
-- **Admin dashboard** — user management (roles, suspend, delete), all-sites view,
+- **Admin dashboard** - user management (roles, suspend, delete), all-sites view,
   live system stats (CPU load, memory, disk), WireGuard server settings,
   platform-wide activity log. **The first registered account becomes admin.**
 
@@ -102,7 +102,7 @@ The installer:
   against the generated WireGuard config, enables IPv4/IPv6 forwarding
 - opens ports 80, 3000 and 51820/udp if ufw is active
 
-Then open `http://your-server:3000` — the first account you register becomes
+Then open `http://your-server:3000` - the first account you register becomes
 the admin. Useful afterwards:
 
 ```bash
@@ -120,7 +120,7 @@ cp .env.example .env   # edit: PUBLIC_HOST, ports, JWT_SECRET
 npm start
 ```
 
-Open `http://your-server:3000` and register — the first account is the admin.
+Open `http://your-server:3000` and register - the first account is the admin.
 
 ### Docker
 
@@ -136,20 +136,20 @@ Dashboard on `:3000`, public sites on `:80`, WireGuard on `:51820/udp`.
    (`https://github.com/you/repo`), branch `main`.
 2. Hosting deploys immediately, then shows a **Payload URL + Secret** in the
    site's *GitHub* tab.
-3. In GitHub: *Settings → Webhooks → Add webhook* — paste both, content type
+3. In GitHub: *Settings → Webhooks → Add webhook* - paste both, content type
    `application/json`, just the push event.
 4. Every push to `main` now deploys automatically. 🎉
 
 **Auto-deploy works two ways:**
 
-- **Polling (default, no setup)** — Hosting checks GitHub for new commits on
+- **Polling (default, no setup)** - Hosting checks GitHub for new commits on
   your branch every couple of minutes and redeploys when it sees one. This
   works even when your server **isn't reachable from the internet** (behind
   NAT / a private IP), so it's the reliable path for a home/LAN server. Uses
   your connected token when available (higher rate limit); public repos work
   without one. Tune with `POLL_INTERVAL_SEC` (default 120), or hit **Check
   now** on a site's GitHub tab.
-- **Webhooks (instant)** — if your server *is* reachable from GitHub, add the
+- **Webhooks (instant)** - if your server *is* reachable from GitHub, add the
   webhook (auto-created with a connected account) for push-instant deploys.
 
 Both honor the *Auto-deploy on push* toggle, and a commit only deploys once.
@@ -157,19 +157,19 @@ Both honor the *Auto-deploy on push* toggle, and a commit only deploys once.
 **Deploy status on GitHub:** when your GitHub account (or a per-site token) is
 connected, each deploy reports back to GitHub two ways, just like Vercel/Netlify:
 
-- a **commit status** — the commit shows a pending → ✓ success / ✗ failure
+- a **commit status** - the commit shows a pending → ✓ success / ✗ failure
   check (context "Hosting / deploy");
-- a **GitHub Deployment** — an entry in the repo's **Environments** panel with
+- a **GitHub Deployment** - an entry in the repo's **Environments** panel with
   the live state and a link straight to your site's URL.
 
 **Built-in status page:** a public page at **`/status`** (linked from the
-sidebar) shows every hosted site and whether it's currently up — an overall
+sidebar) shows every hosted site and whether it's currently up - an overall
 banner (operational / partial / major outage), online/offline counts, and a
 per-site list with live status dots. It refreshes every 30s and exposes only
 site names, types and public URLs (no IPs, owners or internal ports).
 
 Static sites can set a *build command* (`npm run build`) and *serve subfolder*
-(`dist`). Node apps get `PORT` injected — listen on `process.env.PORT` and
+(`dist`). Node apps get `PORT` injected - listen on `process.env.PORT` and
 you're live; `npm start` is the default start command.
 
 ### Upload files directly (no Git needed) + SFTP
@@ -177,9 +177,9 @@ you're live; `npm start` is the default start command.
 Create a site **without** a repository and it becomes an upload site with its
 own document root you manage two ways:
 
-- **Files tab** in the dashboard — drag & drop files or whole folders, browse
+- **Files tab** in the dashboard - drag & drop files or whole folders, browse
   the tree, delete, create folders. Uploads go live immediately.
-- **Built-in SFTP** — connect with FileZilla / WinSCP / the `sftp` CLI using
+- **Built-in SFTP** - connect with FileZilla / WinSCP / the `sftp` CLI using
   your **account email + password**; each of your sites appears as a top-level
   folder. Default port `2222`:
 
@@ -201,8 +201,8 @@ Two ways:
   **🐙 Connect GitHub** and paste a Personal Access Token (classic with the
   `repo` scope, plus `admin:repo_hook` for auto-webhooks; or a fine-grained
   token with *Contents: Read* and *Webhooks: Read & write*). Then:
-  - the **New site** dialog shows a dropdown of your repositories — including
-    **private** ones (🔒) — so you pick instead of pasting a URL;
+  - the **New site** dialog shows a dropdown of your repositories - including
+    **private** ones (🔒) - so you pick instead of pasting a URL;
   - private repos clone automatically using your account token, so
     repositories never have to be public;
   - the **push webhook is created for you** on the repo (no manual
@@ -213,7 +213,7 @@ Two ways:
 
 ## Your IPv6 block + ASN over WireGuard
 
-1. **Network / VPN → New peer** — name it, and optionally enter your IPv6 prefix
+1. **Network / VPN → New peer** - name it, and optionally enter your IPv6 prefix
    (e.g. `2a0e:8f02:f01f::/48`), extra IPv4 CIDR, and ASN.
 2. Download the generated `.conf` → `wg-quick up ./hosting-peer.conf` (or import
    into any WireGuard app).
@@ -221,16 +221,16 @@ Two ways:
    `AllowedIPs`, so the whole block is routed down your tunnel. If `wg` is
    installed, Hosting applies changes live via `wg syncconf`; otherwise the
    config is written to disk for `wg-quick@wg0`.
-4. **BGP over the tunnel** — hit the peer's **BGP** button:
+4. **BGP over the tunnel** - hit the peer's **BGP** button:
    - Toggle *Enable server-side BGP session*: Hosting runs **BIRD2 on the
      server** with a session against your tunnel address (your ASN ↔ the
      server ASN set in *Server settings*). Import filters accept **only your
      registered prefixes**; accepted routes are exported to the kernel so
      traffic follows your announcement.
-   - Download the ready-made **bird.conf for your side** — it originates your
+   - Download the ready-made **bird.conf for your side** - it originates your
      prefixes from your ASN and peers with the server over the tunnel. Bring
      WireGuard up, `bird -c hosting-bird.conf`, and the session establishes.
-   - Or **upload your own BIRD config** (paste or file) — it's parse-checked
+   - Or **upload your own BIRD config** (paste or file) - it's parse-checked
      with `bird -p` before being included, and applied live via
      `birdc configure`. Session state (Established/Idle/…) shows in the
      dashboard peer table.
@@ -240,7 +240,7 @@ Two ways:
 > it from the server). Hosting handles the tunnel + configs; the upstream
 > arrangement is between you and your transit provider.
 
-## Uplink — using BGPTunnel (iFog) or another provider
+## Uplink - using BGPTunnel (iFog) or another provider
 
 If you get your IPv6 block via a tunnel *provider* (BGPTunnel by iFog,
 Route48-style services, your own upstream), the roles flip: **this server is
@@ -249,7 +249,7 @@ that directly:
 
 1. In your provider's dashboard, download the **WireGuard config** for the
    tunnel and the **BIRD config** for the BGP session.
-2. **Network / VPN → Uplink** (admin) — paste (or upload) both files, hit
+2. **Network / VPN → Uplink** (admin) - paste (or upload) both files, hit
    *Save & connect*.
 3. Hosting brings the tunnel up as a client (`wg-quick`, interface `uplink`),
    merges the provider's BIRD config into its managed `bird.conf` (clashing
@@ -257,19 +257,19 @@ that directly:
    and the result is parse-checked with `bird -p` before applying), and the
    session establishes: your prefix is announced from your ASN, and your
    IPv6 block routes to this server.
-4. Point the **Site IPv6 pool** at a chunk of that block — every website now
+4. Point the **Site IPv6 pool** at a chunk of that block - every website now
    gets a real, publicly routable IPv6 address from your own space.
 
 **Routing safety (important):** an uplink must never knock the server off the
 network. Hosting guarantees this by:
 
-- **`Table = off`** on the tunnel — wg-quick installs no routes, so a
+- **`Table = off`** on the tunnel - wg-quick installs no routes, so a
   `::/0` AllowedIPs can't replace the box's default route.
-- **No full-table import into the kernel** — BIRD holds whatever the provider
+- **No full-table import into the kernel** - BIRD holds whatever the provider
   sends, but its kernel export is `none`, so the ~1M-route DFZ never touches
   the Linux routing table. (Announcing your prefix does not require importing
   the table.)
-- **Source policy routing** — if a *Site IPv6 pool* is set, traffic *from*
+- **Source policy routing** - if a *Site IPv6 pool* is set, traffic *from*
   that pool egresses the tunnel (via a dedicated routing table), so your
   announced prefix is reachable both ways while the box's own default route
   stays on the LAN. `git`, `npm`, DNS, everything else is unaffected.
@@ -278,7 +278,7 @@ network. Hosting guarantees this by:
 
 Give websites their own addresses from your block:
 
-1. **Network / VPN → Server settings** (admin) — set *Site IPv6 pool* to a
+1. **Network / VPN → Server settings** (admin) - set *Site IPv6 pool* to a
    subnet of your block that is routed to this server, e.g.
    `2a0e:8f02:f01f:100::/64`. (The rest of the block can keep tunneling to
    your WireGuard peers.)
@@ -288,7 +288,7 @@ Give websites their own addresses from your block:
    interface in the same settings dialog) and released when a site is deleted.
 3. The edge proxy recognizes the destination address of each connection, so
    traffic hitting a site's dedicated IPv6 lands on that site even without a
-   matching `Host` header — point `AAAA yoursite.example → 2a0e:…::2` and
+   matching `Host` header - point `AAAA yoursite.example → 2a0e:…::2` and
    you're done. The address is shown on the site page with a copy button.
 
 ## Configuration
@@ -297,7 +297,7 @@ Give websites their own addresses from your block:
 |---|---|---|
 | `ADMIN_PORT` | `3000` | Dashboard, API and GitHub webhooks |
 | `PROXY_PORT` | `8080` | Public edge proxy (use `80` in production) |
-| `PUBLIC_HOST` | `localhost` | Public DNS name or IP — used for default site domains, webhook URLs and WireGuard endpoints |
+| `PUBLIC_HOST` | `localhost` | Public DNS name or IP - used for default site domains, webhook URLs and WireGuard endpoints |
 | `SITE_BASE_DOMAIN` | auto | Wildcard base for free per-site domains. Defaults to `PUBLIC_HOST`, or `<ip>.sslip.io` when `PUBLIC_HOST` is a bare IP. Set to your own `*.apps.example.com` if you have wildcard DNS. |
 | `JWT_SECRET` | auto-generated | Session signing key (persisted in `DATA_DIR`) |
 | `DATA_DIR` | `./data` | SQLite DB, site checkouts, WireGuard configs |
@@ -308,7 +308,7 @@ Give websites their own addresses from your block:
 ## SSL / HTTPS (Let's Encrypt, built in)
 
 Each site has an **SSL** tab that issues a real Let's Encrypt certificate using
-the **DNS-01** challenge — so it works for a server with **no inbound access**
+the **DNS-01** challenge - so it works for a server with **no inbound access**
 (behind NAT / a private IP), unlike HTTP-01 or a fronting proxy.
 
 1. Add a **real custom domain** you control to the site (Settings → Domains)
@@ -317,7 +317,7 @@ the **DNS-01** challenge — so it works for a server with **no inbound access**
    `_acme-challenge.<domain>` **TXT record(s)** to add.
 3. Add them at your DNS provider, wait a minute, then **Verify & issue**.
    The certificate is stored and the edge proxy immediately serves HTTPS for
-   that domain (SNI — each domain gets its own cert; unknown names get a
+   that domain (SNI - each domain gets its own cert; unknown names get a
    self-signed default).
 4. **Auto-renew** (on by default) re-stages fresh TXT records ~30 days before
    expiry and flags the site, so you just re-verify. (Fully unattended renewal
@@ -327,7 +327,7 @@ the **DNS-01** challenge — so it works for a server with **no inbound access**
 The HTTPS proxy listens on `PROXY_TLS_PORT` (default 443). Set `SSL_STAGING=1`
 to test against Let's Encrypt's staging (untrusted) endpoint first.
 
-> Prefer to terminate TLS elsewhere? You still can — put Caddy/nginx in front
+> Prefer to terminate TLS elsewhere? You still can - put Caddy/nginx in front
 > of the plain-HTTP proxy (`reverse_proxy localhost:8080`). The built-in ACME
 > is for when you want it self-contained.
 
@@ -335,9 +335,9 @@ to test against Let's Encrypt's staging (untrusted) endpoint first.
 
 Cloudflare protects a **hostname**, not a server, and only when that hostname's
 **DNS is proxied through Cloudflare** (the "orange cloud"). Nothing is installed
-on the box — you flip the orange cloud on in Cloudflare's dashboard and every
+on the box - you flip the orange cloud on in Cloudflare's dashboard and every
 proxied record gets Cloudflare's always-on, unmetered L3/4 + HTTP DDoS
-protection. The key point for a multi-user platform: **you don't force users** —
+protection. The key point for a multi-user platform: **you don't force users** -
 you proxy the domain they're *all* served under, and every account's free
 `<slug>.<host>` URL is protected at once, with zero action from users.
 
@@ -348,11 +348,11 @@ and lets you refresh Cloudflare's IP list.
 **One-time setup (in your Cloudflare dashboard):**
 
 1. Make sure `PUBLIC_HOST` (and `SITE_BASE_DOMAIN`, if you set it) is a **real
-   domain** added to Cloudflare — Cloudflare can't proxy a bare IP or an
+   domain** added to Cloudflare - Cloudflare can't proxy a bare IP or an
    `.sslip.io` name.
 2. In **DNS → Records**, add both **Proxied (orange cloud)**:
    - `A`/`AAAA` `@` (your host) → the server's public IPv4/IPv6;
-   - `A`/`AAAA` `*` (wildcard, e.g. `*.apps.example.com`) → the same IPs — this
+   - `A`/`AAAA` `*` (wildcard, e.g. `*.apps.example.com`) → the same IPs - this
      is what protects every free `<slug>.<host>` link.
 3. **SSL/TLS → Overview → Full** (the edge proxy already serves HTTPS on
    `PROXY_TLS_PORT`, so Cloudflare↔origin stays encrypted). Cloudflare's free
@@ -369,35 +369,35 @@ direct attacker can't spoof it. Toggle it in the dashboard or force it off with
 `TRUST_CLOUDFLARE=0`.
 
 **Not fronted by Cloudflare:** the dashboard/API, SFTP and WireGuard (non-HTTP
-or admin-only), and a site's **dedicated IPv6 hit directly** — pointing an
+or admin-only), and a site's **dedicated IPv6 hit directly** - pointing an
 `AAAA` straight at a site's own address bypasses Cloudflare, so for a domain you
 want protected, route it through the Cloudflare-proxied name instead.
 
 ### Users' own custom domains (Cloudflare for SaaS)
 
 The wildcard above covers every account's *free* `<slug>.<host>` URL. For a
-user's **own** domain (e.g. their `shop.example.com`) — whose DNS *they*
-control — the platform uses **Cloudflare for SaaS** so it still routes through
+user's **own** domain (e.g. their `shop.example.com`) - whose DNS *they*
+control - the platform uses **Cloudflare for SaaS** so it still routes through
 Cloudflare, exactly like Vercel/Netlify handle bring-your-own-domain:
 
 1. **Administration → Cloudflare → Cloudflare for SaaS.** Enter a Cloudflare
    **API token** (Zone · *SSL and Certificates* · Edit), your **Zone ID**, and a
-   **fallback origin** — a *proxied* record in your zone that points at this
+   **fallback origin** - a *proxied* record in your zone that points at this
    server (e.g. `customers.example.com`). Hit **Save** (the platform registers
    the fallback origin with Cloudflare) and **Test** to confirm the token/zone.
 2. When a user adds a real custom domain to their site, the platform calls the
    Cloudflare API to create a **custom hostname** and, in the site's
    **Settings → Custom domain routing** panel, shows the user the exact DNS
-   records to add — a **CNAME** from their domain to your fallback origin, plus
+   records to add - a **CNAME** from their domain to your fallback origin, plus
    any DCV/ownership `TXT` records Cloudflare asks for.
 3. Because the CNAME target is Cloudflare-proxied, the user's traffic goes
-   through Cloudflare by construction — Cloudflare issues the certificate and
+   through Cloudflare by construction - Cloudflare issues the certificate and
    filters DDoS, then forwards `Host: shop.example.com` to this server, where the
    edge proxy routes it to the right site. Status flips to **active** in the
    panel once the cert issues (polled automatically).
 
 > Cloudflare for SaaS has its own pricing (roughly the first ~100 custom
-> hostnames free, then a small per-hostname monthly fee — check Cloudflare's
+> hostnames free, then a small per-hostname monthly fee - check Cloudflare's
 > current pricing). Apex domains (`example.com` with no `www`) can't take a plain
 > CNAME; the user needs their DNS provider's CNAME-flattening/ALIAS, or points at
 > Cloudflare's anycast IPs. The API token is stored encrypted (AES-256-GCM).

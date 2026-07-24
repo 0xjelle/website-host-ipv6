@@ -130,7 +130,7 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
         out(`── Cloning ${site.repo_url} (${site.repo_branch})\n`);
         fs.rmSync(workDir, { recursive: true, force: true });
         if (await sh('git', ['clone', '--depth', '1', '--branch', site.repo_branch, url, workDir], { env: gitEnv }, out)) {
-          return finish(false, 'git clone failed — check the URL, branch and access token');
+          return finish(false, 'git clone failed - check the URL, branch and access token');
         }
       }
       const revParse = (fmt) => new Promise(res => {
@@ -150,7 +150,7 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
 
       const hasPkg = fs.existsSync(path.join(workDir, 'package.json'));
       // Containerised Node apps install & build INSIDE their container (so
-      // native modules match the container OS) — skip doing it on the host.
+      // native modules match the container OS) - skip doing it on the host.
       const containerMode = site.type === 'node' && procman.useContainers();
 
       // 2. Install dependencies
@@ -182,7 +182,7 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
         db.prepare("UPDATE sites SET status = 'live' WHERE id = ?").run(siteId);
         const fresh = db.prepare('SELECT * FROM sites WHERE id = ?').get(siteId);
         procman.start(fresh, config);
-        return finish(true, `deployed — app running on internal port ${site.app_port}`);
+        return finish(true, `deployed - app running on internal port ${site.app_port}`);
       }
       const serveDir = path.join(workDir, site.static_dir || '');
       if (!fs.existsSync(serveDir)) return finish(false, `static directory "${site.static_dir}" not found in repo`);
@@ -190,7 +190,7 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
       if (procman.useContainers()) {
         procman.start(db.prepare('SELECT * FROM sites WHERE id = ?').get(siteId), config);
       }
-      return finish(true, 'deployed — static site is live');
+      return finish(true, 'deployed - static site is live');
     } catch (err) {
       finish(false, `unexpected error: ${err.message}`);
     }

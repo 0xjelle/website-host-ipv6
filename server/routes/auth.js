@@ -16,7 +16,7 @@ const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex'
 router.post('/register', async (req, res) => {
   const { email, name, password } = req.body || {};
   if (turnstile.configured() && !(await turnstile.verify((req.body || {}).captcha, req.ip))) {
-    return res.status(400).json({ error: 'Captcha check failed — please try again' });
+    return res.status(400).json({ error: 'Captcha check failed - please try again' });
   }
   if (!email || !name || !password) return res.status(400).json({ error: 'email, name and password are required' });
   if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
@@ -42,7 +42,7 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (turnstile.configured() && !(await turnstile.verify((req.body || {}).captcha, req.ip))) {
-    return res.status(400).json({ error: 'Captcha check failed — please try again' });
+    return res.status(400).json({ error: 'Captcha check failed - please try again' });
   }
   const row = db.prepare('SELECT * FROM users WHERE email = ?').get((email || '').toLowerCase());
   if (!row || !bcrypt.compareSync(password || '', row.password_hash)) {
@@ -154,7 +154,7 @@ router.post('/2fa/enable', requireAuth, (req, res) => {
   if (row.totp_enabled) return res.status(400).json({ error: 'Two-factor is already enabled' });
   if (!row.totp_secret) return res.status(400).json({ error: 'Start setup first' });
   if (!totp.verify(row.totp_secret, String((req.body || {}).code || ''))) {
-    return res.status(400).json({ error: 'That code is not valid — check your authenticator and try again' });
+    return res.status(400).json({ error: 'That code is not valid - check your authenticator and try again' });
   }
   const codes = Array.from({ length: 10 }, () => crypto.randomBytes(5).toString('hex'));
   db.prepare('UPDATE users SET totp_enabled = 1, totp_backup = ? WHERE id = ?')

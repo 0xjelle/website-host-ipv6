@@ -78,7 +78,7 @@ function renderConf() {
   const serverV6 = s.tunnel_v6.split('/')[0];
   const serverV4 = s.tunnel_v4.split('/')[0];
 
-  let conf = `# Hosting BIRD2 config — generated ${new Date().toISOString()}
+  let conf = `# Hosting BIRD2 config - generated ${new Date().toISOString()}
 # BGP sessions run over the WireGuard tunnel (wg0).
 router id ${routerId};
 log syslog all;
@@ -101,7 +101,7 @@ protocol kernel kernel4 {
 `;
 
   if (!serverAsn) {
-    conf += '\n# Server ASN is not set — no BGP sessions are configured.\n'
+    conf += '\n# Server ASN is not set - no BGP sessions are configured.\n'
           + '# Set it in the dashboard: Network / VPN → Server settings.\n';
   }
 
@@ -157,7 +157,7 @@ function writeConf() {
   const uplink = uplinkSettings();
   if (uplink.bird.trim()) {
     fs.writeFileSync(uplinkConfPath(),
-      `# extracted from the provider's BIRD config — managed by Hosting\n${extractUplinkBird(uplink.bird)}\n`,
+      `# extracted from the provider's BIRD config - managed by Hosting\n${extractUplinkBird(uplink.bird)}\n`,
       { mode: 0o644 });
   } else if (fs.existsSync(uplinkConfPath())) {
     fs.unlinkSync(uplinkConfPath());
@@ -190,7 +190,7 @@ function validateCandidate(peerId, customText, cb) {
     // render the real conf but point this peer's include at the candidate
     let conf = renderConf();
     if (peer && !(peer.bgp_enabled && peer.bird_custom)) {
-      // peer not yet included — append the candidate include so it gets parsed
+      // peer not yet included - append the candidate include so it gets parsed
       conf += `\ninclude "${candidateCustom}";\n`;
     } else {
       conf = conf.replace(customPath(peerId), candidateCustom);
@@ -200,7 +200,7 @@ function validateCandidate(peerId, customText, cb) {
     execFile('bird', ['-p', '-c', candidateConf], (err, stdout, stderr) => {
       cleanup();
       if (!err) return cb({ ok: true, checked: true });
-      if (err.code === 'ENOENT') return cb({ ok: true, checked: false, note: 'bird binary not found — config accepted without parse check' });
+      if (err.code === 'ENOENT') return cb({ ok: true, checked: false, note: 'bird binary not found - config accepted without parse check' });
       cb({ ok: false, checked: true, error: (stderr || stdout || err.message).trim().split('\n').slice(-4).join('\n') });
     });
   } catch (e) {
@@ -231,7 +231,7 @@ function validateUplink(birdText, cb) {
     execFile('bird', ['-p', '-c', candidateConf], (err, stdout, stderr) => {
       cleanup();
       if (!err) return cb({ ok: true, checked: true, extracted });
-      if (err.code === 'ENOENT') return cb({ ok: true, checked: false, extracted, note: 'bird binary not found — config accepted without parse check' });
+      if (err.code === 'ENOENT') return cb({ ok: true, checked: false, extracted, note: 'bird binary not found - config accepted without parse check' });
       cb({ ok: false, checked: true, error: (stderr || stdout || err.message).trim().split('\n').slice(-4).join('\n') });
     });
   } catch (e) {
@@ -242,7 +242,7 @@ function validateUplink(birdText, cb) {
 
 // Apply the current config to BIRD. If BIRD is reconfigurable, `birdc
 // configure` reloads it live. If BIRD isn't running (no control socket),
-// the config is already on disk — start the service so it picks it up,
+// the config is already on disk - start the service so it picks it up,
 // rather than surfacing a raw socket error.
 function applyLive(cb) {
   const confPath = writeConf();
@@ -252,14 +252,14 @@ function applyLive(cb) {
     }
     const out = String((stderr || '') + (stdout || '') || err.message);
     if (err.code === 'ENOENT') {
-      return cb({ applied: false, reason: 'BIRD is not installed — config written to disk', confPath });
+      return cb({ applied: false, reason: 'BIRD is not installed - config written to disk', confPath });
     }
     // BIRD not running (no /run/bird/bird.ctl) → try to start it; it reads
     // the freshly written config on startup.
     if (/control socket|Unable to connect|No such file/i.test(out)) {
       return execFile('systemctl', ['start', 'bird'], (startErr) => {
-        if (!startErr) return cb({ applied: true, confPath, output: 'BIRD was not running — started it' });
-        return cb({ applied: false, confPath, reason: 'Config saved. BIRD is not running — start it with:  sudo systemctl start bird' });
+        if (!startErr) return cb({ applied: true, confPath, output: 'BIRD was not running - started it' });
+        return cb({ applied: false, confPath, reason: 'Config saved. BIRD is not running - start it with:  sudo systemctl start bird' });
       });
     }
     cb({ applied: false, confPath, reason: `birdc configure failed: ${out.trim().split('\n').pop()}` });
@@ -267,7 +267,7 @@ function applyLive(cb) {
 }
 
 // Live session status: peer sessions keyed by id, plus uplink (provider)
-// BGP protocols — any BGP protocol that isn't one of our hx_peer sessions.
+// BGP protocols - any BGP protocol that isn't one of our hx_peer sessions.
 function status(cb) {
   execFile('birdc', ['show', 'protocols'], (err, stdout) => {
     if (err) return cb({ available: false, sessions: {}, uplink: [] });

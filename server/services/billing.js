@@ -1,4 +1,4 @@
-// Billing via Lemon Squeezy (Merchant of Record — handles EU/Belgian VAT).
+// Billing via Lemon Squeezy (Merchant of Record - handles EU/Belgian VAT).
 // Dormant until the LEMONSQUEEZY_* env vars are set, so the platform runs free
 // of charge without any billing configured.
 const crypto = require('crypto');
@@ -7,7 +7,7 @@ const https = require('https');
 // Plans and their limits. Paid plans map to a Lemon Squeezy *variant* id (from
 // your store), supplied via env so you don't hard-code product ids.
 // Pay-per-site: one subscription to a per-unit "seat" variant whose quantity is
-// kept equal to the account's number of sites. Price label is display-only —
+// kept equal to the account's number of sites. Price label is display-only -
 // the real per-site charge is configured on the Lemon Squeezy product.
 const PER_SITE = {
   variant: process.env.LS_VARIANT_PERSITE || null,

@@ -7,7 +7,7 @@ async function gh(token, path, opts = {}) {
   const res = await fetch(API + path, {
     ...opts,
     headers: {
-      // token is optional — public repos work unauthenticated (rate-limited)
+      // token is optional - public repos work unauthenticated (rate-limited)
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       Accept: 'application/vnd.github+json',
       'User-Agent': 'HostingPlatform',

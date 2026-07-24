@@ -20,7 +20,7 @@ router.post('/github/:siteId', express.raw({ type: '*/*', limit: '2mb' }), (req,
   }
 
   const event = req.headers['x-github-event'];
-  if (event === 'ping') return res.json({ ok: true, msg: 'pong — webhook configured correctly 🎉' });
+  if (event === 'ping') return res.json({ ok: true, msg: 'pong - webhook configured correctly 🎉' });
   if (event !== 'push') return res.json({ ok: true, msg: `ignored event: ${event}` });
 
   let payload;
@@ -34,7 +34,7 @@ router.post('/github/:siteId', express.raw({ type: '*/*', limit: '2mb' }), (req,
   if (!site.auto_deploy) return res.json({ ok: true, msg: 'auto-deploy is disabled for this site' });
 
   const head = payload.head_commit || {};
-  logActivity(site.user_id, 'deploy.webhook', `"${site.name}" push ${String(head.id || '').slice(0, 7)} — ${head.message || ''}`.trim());
+  logActivity(site.user_id, 'deploy.webhook', `"${site.name}" push ${String(head.id || '').slice(0, 7)} - ${head.message || ''}`.trim());
   deployer.deploy(site.id, 'webhook', {
     sha: head.id ? String(head.id).slice(0, 7) : null,
     message: head.message || null,

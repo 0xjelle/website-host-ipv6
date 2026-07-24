@@ -11,7 +11,7 @@ const https = require('https');
 // the real per-site charge is configured on the Lemon Squeezy product.
 const PER_SITE = {
   variant: process.env.LS_VARIANT_PERSITE || null,
-  price: process.env.LS_PRICE_PERSITE || '€3 / site / month',
+  price: process.env.LS_PRICE_PERSITE || '€20 / site / month',
 };
 
 // Requires the per-site variant too, so nothing is enforced until it's set.

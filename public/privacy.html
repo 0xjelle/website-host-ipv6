@@ -1,15 +1,37 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Privacy Policy · Hosting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-  body{margin:0;background:#0b0e14;color:#e6e9f0;font-family:system-ui,Segoe UI,Arial,sans-serif;line-height:1.7}
-  .wrap{max-width:760px;margin:0 auto;padding:3rem 1.5rem}
-  h1{font-size:1.8rem} h2{font-size:1.15rem;margin-top:2rem;color:#cdd3e0}
-  a{color:#38d0ff} .muted{color:#8b93a7}
-  .tmpl{background:#2a1e0c;border:1px solid #5a3a12;color:#f0b429;border-radius:10px;padding:1rem;margin:1.5rem 0;font-size:.92rem}
-  code{background:#161b26;padding:.1rem .35rem;border-radius:5px}
-  ul{padding-left:1.2rem}
-</style></head><body><div class="wrap">
+  body{margin:0;min-height:100vh;background:#06070c;color:#e9edf7;line-height:1.75;letter-spacing:-.005em;
+    font-family:'Space Grotesk',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  body::before,body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0}
+  body::before{background:
+    radial-gradient(38vw 38vw at 8% -6%,rgba(96,120,255,.26),transparent 66%),
+    radial-gradient(34vw 34vw at 96% 14%,rgba(60,220,180,.16),transparent 66%),
+    radial-gradient(42vw 34vw at 58% 108%,rgba(150,90,255,.18),transparent 68%);
+    filter:blur(60px);animation:drift 34s ease-in-out infinite}
+  body::after{background-image:linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px);background-size:56px 56px}
+  @keyframes drift{0%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(3%,-3%,0) scale(1.08)}100%{transform:translate3d(0,0,0) scale(1)}}
+  @media(prefers-reduced-motion:reduce){body::before{animation:none}}
+  .wrap{position:relative;z-index:1;max-width:780px;margin:0 auto;padding:3.5rem 1.5rem 4rem}
+  .card{border-radius:24px;padding:2.2rem 2.4rem;border:1px solid rgba(255,255,255,.10);
+    background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.022));
+    backdrop-filter:blur(26px) saturate(160%);-webkit-backdrop-filter:blur(26px) saturate(160%);
+    box-shadow:0 30px 70px -38px rgba(0,0,0,.95),inset 0 1px 0 rgba(255,255,255,.14)}
+  h1{font-size:30px;font-weight:600;letter-spacing:-.035em;color:#eef3ff;margin:0}
+  h2{font-size:1.05rem;font-weight:600;letter-spacing:-.015em;margin-top:2.2rem;color:#dbe6f8}
+  a{color:#9fd4ff;text-decoration:none} a:hover{color:#fff}
+  .muted{color:#7d8fad;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.08em}
+  .tmpl{border-radius:16px;padding:1.1rem 1.2rem;margin:1.6rem 0;font-size:.9rem;color:#ffd9a3;
+    border:1px solid rgba(255,201,120,.30);background:rgba(255,201,120,.10)}
+  code{font-family:'JetBrains Mono',monospace;font-size:.82rem;background:rgba(8,11,20,.55);
+    border:1px solid rgba(255,255,255,.12);padding:.14rem .4rem;border-radius:7px}
+  ul{padding-left:1.2rem} li{margin:.3rem 0}
+</style></head><body><div class="wrap"><div class="card">
 <h1>Privacy Policy</h1>
 <p class="muted">Last updated: <code>[DATE]</code></p>
 
@@ -56,5 +78,6 @@
 <h2>Changes</h2>
 <p>We will post updates here with a new date.</p>
 
-<p class="muted" style="margin-top:2.5rem"><a href="/terms">Terms of Service</a> · <a href="/status">Status</a></p>
+</div>
+<p class="muted" style="margin-top:1.6rem;text-align:center"><a href="/terms">Terms of Service</a> · <a href="/status">Status</a></p>
 </div></body></html>

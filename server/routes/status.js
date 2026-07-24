@@ -6,6 +6,7 @@ const { db } = require('../db');
 const config = require('../config');
 const { checkHealth } = require('../services/health');
 const acme = require('../services/acme');
+const cfsaas = require('../services/cfsaas');
 
 const router = express.Router();
 
@@ -15,6 +16,11 @@ function sslFor(s) {
   if (st.status === 'active') {
     return { state: st.daysLeft !== null && st.daysLeft <= 20 ? 'expiring' : 'secure', daysLeft: st.daysLeft, not_after: st.not_after };
   }
+  // A domain fronted by Cloudflare gets its certificate from Cloudflare, not
+  // the platform's Let's Encrypt — count that as secured too.
+  try {
+    if (cfsaas.rowsForSite(s.id).map(cfsaas.view).some(h => h.active)) return { state: 'secure', via: 'cloudflare' };
+  } catch { /* ignore */ }
   if (st.status === 'pending') return { state: 'pending' };
   // eligible for a cert but none yet
   const eligible = domains.some(d => !/\.sslip\.io$/i.test(d) && !/^\d+\.\d+\.\d+\.\d+$/.test(d));

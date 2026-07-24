@@ -37,4 +37,18 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { signToken, requireAuth, requireAdmin };
+// Sets req.user when a valid session is present, but never rejects — for
+// endpoints that tailor their response to the viewer (e.g. the status page).
+function optionalAuth(req, res, next) {
+  const token = getTokenFromReq(req);
+  if (token) {
+    try {
+      const payload = jwt.verify(token, config.jwtSecret);
+      const user = db.prepare('SELECT id, email, name, role, suspended FROM users WHERE id = ?').get(payload.uid);
+      if (user && !user.suspended) req.user = user;
+    } catch { /* treat as anonymous */ }
+  }
+  next();
+}
+
+module.exports = { signToken, requireAuth, requireAdmin, optionalAuth };

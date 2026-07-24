@@ -6,10 +6,13 @@ const https = require('https');
 
 // Plans and their limits. Paid plans map to a Lemon Squeezy *variant* id (from
 // your store), supplied via env so you don't hard-code product ids.
+// No free hosting — an account must subscribe to a package to create sites.
+// Paid plans map to a Lemon Squeezy variant id; price labels are for display
+// only (the real charge is configured on the LS product).
 const PLANS = {
-  free:    { name: 'Free',    maxSites: 1,  variant: null },
-  starter: { name: 'Starter', maxSites: 5,  variant: process.env.LS_VARIANT_STARTER || null },
-  pro:     { name: 'Pro',     maxSites: 25, variant: process.env.LS_VARIANT_PRO || null },
+  free:    { name: 'Free',    maxSites: 0,  variant: null, price: '' },
+  starter: { name: 'Starter', maxSites: 5,  variant: process.env.LS_VARIANT_STARTER || null, price: process.env.LS_PRICE_STARTER || '€5/mo' },
+  pro:     { name: 'Pro',     maxSites: 25, variant: process.env.LS_VARIANT_PRO || null, price: process.env.LS_PRICE_PRO || '€15/mo' },
 };
 
 function configured() { return !!(process.env.LEMONSQUEEZY_API_KEY && process.env.LEMONSQUEEZY_STORE_ID); }

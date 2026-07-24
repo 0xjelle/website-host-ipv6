@@ -105,12 +105,18 @@ router.post('/', async (req, res) => {
   if (!cleanDomains.every(d => /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(d))) {
     return res.status(400).json({ error: 'Enter a valid custom domain (e.g. www.example.com)' });
   }
-  // Enforce the plan's site limit (only when billing is configured).
-  if (billing.configured()) {
+  // Enforce the plan's site limit (only when billing is configured; admins are
+  // the operator, not customers, so they're exempt).
+  if (billing.configured() && req.user.role !== 'admin') {
     const u = db.prepare('SELECT plan FROM users WHERE id = ?').get(req.user.id);
     const lim = billing.limits(u.plan || 'free');
     const count = db.prepare('SELECT COUNT(*) AS n FROM sites WHERE user_id = ?').get(req.user.id).n;
-    if (count >= lim.maxSites) return res.status(402).json({ error: `Your ${lim.name} plan allows ${lim.maxSites} site${lim.maxSites === 1 ? '' : 's'}. Upgrade in Billing to add more.` });
+    if (count >= lim.maxSites) {
+      const msg = lim.maxSites === 0
+        ? 'You need a subscription to create a site — pick a plan in Billing.'
+        : `Your ${lim.name} plan allows ${lim.maxSites} site${lim.maxSites === 1 ? '' : 's'}. Upgrade in Billing to add more.`;
+      return res.status(402).json({ error: msg });
+    }
   }
 
   let slug = slugify(name);

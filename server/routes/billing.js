@@ -45,7 +45,7 @@ router.get('/', (req, res) => {
     configured: billing.configured(),
     plan, status: u.ls_status || null, renews_at: u.ls_renews_at || null,
     limits: billing.limits(plan), sites_used: count,
-    plans: Object.entries(billing.PLANS).map(([key, p]) => ({ key, name: p.name, maxSites: p.maxSites, purchasable: !!p.variant })),
+    plans: Object.entries(billing.PLANS).map(([key, p]) => ({ key, name: p.name, maxSites: p.maxSites, price: p.price || '', purchasable: !!p.variant })),
   });
 });
 

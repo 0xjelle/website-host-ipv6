@@ -422,7 +422,7 @@
         ${nav('sites', '▤', 'Sites')}
         ${nav('traffic', '📈', 'Traffic')}
         ${nav('certs', '🔒', 'Certificates')}
-        ${nav('network', '⇄', 'Network / VPN')}
+        ${me.role === 'admin' ? nav('network', '⇄', 'Network / VPN') : ''}
         ${nav('billing', '💳', 'Billing')}
         ${me.role === 'admin' ? `
           <div class="side-label">Administration</div>
@@ -1783,7 +1783,7 @@
           ${b.renews_at ? `<span class="k">Renews</span><span class="v">${fmtDate(b.renews_at)}</span>` : ''}
         </div>
         <div style="display:flex;gap:.6rem;flex-wrap:wrap">
-          ${b.plans.filter(p => p.purchasable && p.key !== b.plan).map(p => `<button class="btn primary" data-plan="${esc(p.key)}">Upgrade to ${esc(p.name)} · ${p.maxSites} sites</button>`).join('')}
+          ${b.plans.filter(p => p.purchasable && p.key !== b.plan).map(p => `<button class="btn primary" data-plan="${esc(p.key)}">Subscribe · ${esc(p.name)} · ${p.maxSites} sites${p.price ? ` · ${esc(p.price)}` : ''}</button>`).join('')}
           ${b.status ? `<button class="btn" id="portal">Manage subscription</button>` : ''}
         </div>`;
       el.querySelectorAll('[data-plan]').forEach(btn => btn.addEventListener('click', async () => {
@@ -1869,7 +1869,7 @@
       else if (route.startsWith('sites/')) await pageSiteDetail(route.split('/')[1]);
       else if (route === 'traffic') await pageTraffic();
       else if (route === 'certs') await pageCerts();
-      else if (route === 'network') await pageNetwork();
+      else if (route === 'network' && me.role === 'admin') await pageNetwork();
       else if (route === 'admin/users' && me.role === 'admin') await pageUsers();
       else if (route === 'admin/cloudflare' && me.role === 'admin') await pageCloudflare();
       else if (route === 'admin/system' && me.role === 'admin') await pageSystem();

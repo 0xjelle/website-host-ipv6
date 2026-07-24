@@ -7,8 +7,10 @@ const config = require('../config');
 const { checkHealth } = require('../services/health');
 const acme = require('../services/acme');
 const cfsaas = require('../services/cfsaas');
+const { optionalAuth } = require('../auth');
 
 const router = express.Router();
+router.use(optionalAuth); // tailor to the viewer without requiring login
 
 function sslFor(s) {
   const st = acme.readStatus(s.id);
@@ -28,7 +30,11 @@ function sslFor(s) {
 }
 
 router.get('/', async (req, res) => {
-  const rows = db.prepare("SELECT * FROM sites ORDER BY name").all();
+  // Only show the viewer their own sites (admins see all). Anonymous visitors
+  // see none — a tenant's sites are never exposed to others.
+  let rows = [];
+  if (req.user && req.user.role === 'admin') rows = db.prepare("SELECT * FROM sites ORDER BY name").all();
+  else if (req.user) rows = db.prepare("SELECT * FROM sites WHERE user_id = ? ORDER BY name").all(req.user.id);
   const sites = await Promise.all(rows.map(async (s) => {
     const h = await checkHealth(s);
     const domains = JSON.parse(s.domains || '[]');

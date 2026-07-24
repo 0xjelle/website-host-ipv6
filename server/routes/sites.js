@@ -110,7 +110,7 @@ router.post('/', async (req, res) => {
   // up; admins are the operator, not customers.
   let billUser = null;
   if (billing.configured() && req.user.role !== 'admin') {
-    billUser = db.prepare('SELECT ls_status, ls_subscription_id, ls_item_id FROM users WHERE id = ?').get(req.user.id);
+    billUser = db.prepare('SELECT bill_status, bill_subscription_id, bill_item_id FROM users WHERE id = ?').get(req.user.id);
     if (!billing.subscribed(billUser)) {
       return res.status(402).json({ error: 'You need an active subscription to create a site - it is billed per site. Set it up in Billing.' });
     }
@@ -139,9 +139,9 @@ router.post('/', async (req, res) => {
   const site = db.prepare('SELECT * FROM sites WHERE id = ?').get(r.lastInsertRowid);
   logActivity(req.user.id, 'site.create', `"${site.name}" (${site.type})`);
   // Per-site billing: set the subscription quantity to the new site count.
-  if (billUser && billUser.ls_item_id) {
+  if (billUser && billUser.bill_item_id) {
     const n = db.prepare('SELECT COUNT(*) AS n FROM sites WHERE user_id = ?').get(req.user.id).n;
-    billing.setQuantity(billUser.ls_item_id, n).catch(e => console.error('billing quantity sync:', e.message));
+    billing.setQuantity(billUser.bill_item_id, n).catch(e => console.error('billing quantity sync:', e.message));
   }
   // Register any custom domains with Cloudflare for SaaS, and return the result
   // so the UI can show the DNS records to add right after creation. Best-effort:
@@ -450,7 +450,7 @@ router.delete('/:id', (req, res) => {
   if (!site) return;
   // Capture Cloudflare hostname ids before the row is gone.
   const cfIds = cfsaas.cfIdsForSite(site.id);
-  const owner = db.prepare('SELECT ls_item_id FROM users WHERE id = ?').get(site.user_id);
+  const owner = db.prepare('SELECT bill_item_id FROM users WHERE id = ?').get(site.user_id);
   procman.stop(site.id);
   if (site.ipv6_addr) ipam.removeAddr(site.ipv6_addr);
   db.prepare('DELETE FROM sites WHERE id = ?').run(site.id);
@@ -466,9 +466,9 @@ router.delete('/:id', (req, res) => {
     .catch((e) => console.error(`site delete: could not remove ${dir}: ${e.message}`));
   cfsaas.deleteIds(cfIds).catch(() => {});
   // Per-site billing: drop the subscription quantity to the new site count.
-  if (billing.configured() && owner && owner.ls_item_id) {
+  if (billing.configured() && owner && owner.bill_item_id) {
     const n = db.prepare('SELECT COUNT(*) AS n FROM sites WHERE user_id = ?').get(site.user_id).n;
-    billing.setQuantity(owner.ls_item_id, n).catch(e => console.error('billing quantity sync:', e.message));
+    billing.setQuantity(owner.bill_item_id, n).catch(e => console.error('billing quantity sync:', e.message));
   }
   // Remove the site's dedicated isolation user (best-effort; only exists when
   // running as root with per-site isolation active).

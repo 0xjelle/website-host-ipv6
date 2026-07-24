@@ -1760,7 +1760,7 @@
     });
   }
 
-  // ── billing (Lemon Squeezy) ────────────────────────────────────
+  // ── billing (Stripe, pay per site) ─────────────────────────────
   async function pageBilling() {
     const c = h(`<div>
       <div class="page-head"><h1>Billing</h1><div class="sub">Your plan and subscription.</div></div>
@@ -1772,7 +1772,7 @@
     const render = (b) => {
       const el = box(); el.classList.remove('empty');
       if (!b.configured) {
-        el.innerHTML = `<p style="color:var(--ink-2)">Billing isn't set up on this server - everything is free with no limits. <span style="color:var(--ink-3)">(Admin: configure Lemon Squeezy keys in <code class="code">.env</code> to enable per-site billing.)</span></p>`;
+        el.innerHTML = `<p style="color:var(--ink-2)">Billing isn't set up on this server - everything is free with no limits. <span style="color:var(--ink-3)">(Admin: configure the Stripe keys in <code class="code">.env</code> to enable per-site billing.)</span></p>`;
         return;
       }
       if (b.subscribed) {
@@ -1791,11 +1791,18 @@
       }
       el.innerHTML = `
         <p style="color:var(--ink-2)">Hosting is <b>pay per site</b> - <b>${esc(b.price_label)}</b>. Subscribe once; every website you create is added to your bill, and deleting one lowers it automatically.</p>
-        <button class="btn primary" id="sub">Subscribe</button>`;
+        ${b.status ? `<p style="color:var(--warn);font-size:.88rem">Your subscription is <b>${esc(b.status)}</b> - resubscribe below to keep hosting sites.</p>` : ''}
+        <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+          <button class="btn primary" id="sub">Subscribe</button>
+          ${b.has_customer ? `<button class="btn" id="portal">Billing history</button>` : ''}
+        </div>`;
       el.querySelector('#sub').addEventListener('click', async (e) => {
         e.target.disabled = true;
         try { const r = await api('/billing/checkout', { method: 'POST' }); location.href = r.url; }
         catch (err) { oops(err); e.target.disabled = false; }
+      });
+      el.querySelector('#portal')?.addEventListener('click', async () => {
+        try { const r = await api('/billing/portal', { method: 'POST' }); window.open(r.url, '_blank'); } catch (e) { oops(e); }
       });
     };
     load();

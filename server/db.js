@@ -158,11 +158,12 @@ addColumn('users', 'totp_secret TEXT');                       // base32 TOTP sec
 addColumn('users', 'totp_enabled INTEGER NOT NULL DEFAULT 0'); // 2FA active?
 addColumn('users', 'totp_backup TEXT');                       // JSON array of sha256(backup code)
 addColumn('users', "plan TEXT NOT NULL DEFAULT 'free'");      // billing plan key
-addColumn('users', 'ls_status TEXT');                         // Lemon Squeezy subscription status
-addColumn('users', 'ls_subscription_id TEXT');               // Lemon Squeezy subscription id
-addColumn('users', 'ls_customer_id TEXT');                   // Lemon Squeezy customer id (portal)
-addColumn('users', 'ls_renews_at TEXT');                     // next renewal timestamp
-addColumn('users', 'ls_item_id TEXT');                       // subscription item id (for per-site quantity)
+// Billing (provider-neutral names so switching provider needs no migration).
+addColumn('users', 'bill_status TEXT');            // subscription status (active/past_due/canceled/...)
+addColumn('users', 'bill_subscription_id TEXT');   // provider subscription id
+addColumn('users', 'bill_customer_id TEXT');       // provider customer id (billing portal)
+addColumn('users', 'bill_item_id TEXT');           // subscription item id (per-site quantity)
+addColumn('users', 'bill_renews_at TEXT');         // next renewal timestamp
 addColumn('sites', 'not_found_html TEXT'); // optional custom 404 page (served by the edge proxy)
 addColumn('cf_hostnames', 'ssl_detail TEXT'); // issued-cert details (authority, validity) as JSON
 

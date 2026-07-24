@@ -25,7 +25,29 @@ const PER_SITE = {
 // invoicing is predictable instead of falling on each customer's signup date.
 const ANCHOR_DAY = Math.min(28, Math.max(1, parseInt(process.env.BILLING_ANCHOR_DAY || '1', 10) || 1));
 
-function configured() { return !!(process.env.STRIPE_SECRET_KEY && PER_SITE.price); }
+// Copy-pasting a key often drags in invisible characters (zero-width space or
+// joiner, BOM, non-breaking space) or stray whitespace. Node refuses to put
+// those in a header and throws a bare "Invalid character in header content", so
+// strip them here and, if anything unusable is left, say exactly what is wrong.
+function apiKey() {
+  // \s covers spaces/tabs/CR/LF; the rest are the invisible characters a paste
+  // commonly smuggles in: NBSP, zero-width space/joiners, bidi marks, BOM.
+  const cleaned = String(process.env.STRIPE_SECRET_KEY || '')
+    .replace(/[\s\u00a0\u200b-\u200f\u202a-\u202e\u2060\ufeff]/g, '');
+  if (!cleaned) return null;
+  const bad = [...cleaned].find((c) => c < '\x21' || c > '\x7e');
+  if (bad) {
+    const hex = bad.codePointAt(0).toString(16).toUpperCase().padStart(4, '0');
+    throw new Error(`STRIPE_SECRET_KEY contains an invalid character (U+${hex}). Re-copy the key from Stripe as plain text - no quotes, spaces or line breaks.`);
+  }
+  return cleaned;
+}
+
+function configured() {
+  let key = null;
+  try { key = apiKey(); } catch { return true; } // misconfigured, but billing IS intended
+  return !!(key && PER_SITE.price);
+}
 
 // Next occurrence of the anchor day, 00:00 UTC, strictly in the future. Capped
 // at day 28 so it exists in every month (Stripe then keeps month-end behaviour
@@ -60,7 +82,10 @@ function encode(obj, prefix = '', out = []) {
 
 function api(method, path, params) {
   return new Promise((resolve, reject) => {
-    const key = process.env.STRIPE_SECRET_KEY;
+    let key;
+    // apiKey() throws a descriptive error for a key with invalid characters;
+    // surface that as a rejection rather than an exception mid-request.
+    try { key = apiKey(); } catch (e) { return reject(e); }
     if (!key) return reject(new Error('Stripe is not configured'));
     const body = params ? encode(params).join('&') : null;
     const req = https.request({

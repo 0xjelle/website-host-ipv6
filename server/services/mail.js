@@ -3,7 +3,13 @@
 // features that use it (password reset, notifications) just stay dormant.
 const https = require('https');
 
-function configured() { return !!process.env.RESEND_API_KEY; }
+// Strip whitespace and the invisible characters a copy-paste can smuggle in
+// (NBSP, zero-width space/joiners, bidi marks, BOM) - Node rejects those in a
+// header with a bare "Invalid character in header content".
+function apiKey() {
+  return String(process.env.RESEND_API_KEY || '').replace(/[\s\u00a0\u200b-\u200f\u202a-\u202e\u2060\ufeff]/g, '');
+}
+function configured() { return !!apiKey(); }
 function from() { return process.env.MAIL_FROM || 'Hosting <onboarding@resend.dev>'; }
 
 // Wrap body copy in a minimal, client-safe HTML shell.
@@ -20,7 +26,7 @@ function send({ to, subject, html, text }) {
     const req = https.request({
       host: 'api.resend.com', path: '/emails', method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        Authorization: `Bearer ${apiKey()}`,
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(payload),
       },

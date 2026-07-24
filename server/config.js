@@ -4,12 +4,21 @@ const crypto = require('crypto');
 
 const root = path.join(__dirname, '..');
 
-// Load a local .env file if present (no dependency needed)
+// Load a local .env file if present (no dependency needed).
+// Values are trimmed and unquoted: a trailing space or a wrapping quote pasted
+// into a secret used to survive into the value, which then either failed auth
+// or made Node reject the HTTP header built from it.
 const envFile = path.join(root, '.env');
 if (fs.existsSync(envFile)) {
-  for (const line of fs.readFileSync(envFile, 'utf8').split('\n')) {
-    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2];
+  for (const rawLine of fs.readFileSync(envFile, 'utf8').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const m = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!m) continue;
+    let val = m[2].trim();
+    const q = val[0];
+    if ((q === '"' || q === "'") && val.length > 1 && val[val.length - 1] === q) val = val.slice(1, -1);
+    if (process.env[m[1]] === undefined) process.env[m[1]] = val;
   }
 }
 

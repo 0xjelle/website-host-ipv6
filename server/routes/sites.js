@@ -133,13 +133,16 @@ router.post('/', async (req, res) => {
   if (!cleanDomains.every(d => /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(d))) {
     return res.status(400).json({ error: 'Enter a valid custom domain (e.g. www.example.com)' });
   }
-  // Pay-per-site: a non-admin must have an active subscription to create sites
-  // (each site adds to the billed quantity). Only enforced when billing is set
-  // up; admins are the operator, not customers.
+  // Pay-per-site. Two separate concerns, deliberately decoupled: the paywall is
+  // waived for admins (they are the operator, not a customer), but the billed
+  // quantity must still follow the site count for ANYONE who holds a
+  // subscription - including an admin who happens to have one. Reading the
+  // billing row only in the non-admin branch previously meant an admin's
+  // subscription silently never got its quantity updated.
   let billUser = null;
-  if (billing.configured() && req.user.role !== 'admin') {
+  if (billing.configured()) {
     billUser = db.prepare('SELECT bill_status, bill_subscription_id, bill_item_id FROM users WHERE id = ?').get(req.user.id);
-    if (!billing.subscribed(billUser)) {
+    if (req.user.role !== 'admin' && !billing.subscribed(billUser)) {
       return res.status(402).json({ error: 'You need an active subscription to create a site - it is billed per site. Set it up in Billing.' });
     }
   }

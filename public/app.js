@@ -1853,8 +1853,15 @@
             <div style="margin-top:.7rem"><a class="btn primary" href="#/sites">Create your first site →</a></div></div>` : ''}
           <div style="display:flex;gap:.6rem;flex-wrap:wrap">
             <button class="btn" id="portal">Manage subscription</button>
+            <button class="btn" id="resync" title="Re-read the subscription from Stripe and match the billed quantity to your site count.">↻ Sync with Stripe</button>
             ${b.sites_used > 0 ? `<a class="btn" href="#/sites">Your sites</a>` : ''}
           </div>`;
+        el.querySelector('#resync').addEventListener('click', async (e) => {
+          e.target.disabled = true; e.target.textContent = 'Syncing…';
+          try { await api('/billing/sync', { method: 'POST' }); toast(`Synced - billed quantity now matches your ${b.sites_used} site(s).`, 'ok'); }
+          catch (err) { oops(err); }
+          load();
+        });
         el.querySelector('#portal').addEventListener('click', async () => {
           try { const r = await api('/billing/portal', { method: 'POST' }); window.open(r.url, '_blank'); } catch (e) { oops(e); }
         });

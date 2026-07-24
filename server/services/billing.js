@@ -49,6 +49,22 @@ function configured() {
   return !!(key && PER_SITE.price);
 }
 
+// Safe description of the configured credentials for diagnostics. Reports
+// length, the (non-secret) prefix and any character that cannot go in an HTTP
+// header - never the key itself.
+function keyInfo() {
+  const raw = String(process.env.STRIPE_SECRET_KEY || '');
+  if (!raw) return 'STRIPE_SECRET_KEY is empty';
+  const odd = [];
+  for (let i = 0; i < raw.length; i++) {
+    const cp = raw.codePointAt(i);
+    if (cp < 0x21 || cp > 0x7e) odd.push(`index ${i}: U+${cp.toString(16).toUpperCase().padStart(4, '0')}`);
+  }
+  return `STRIPE_SECRET_KEY: ${raw.length} chars, starts "${raw.slice(0, 8)}"`
+    + (odd.length ? `, ${odd.length} character(s) not allowed in a header -> ${odd.slice(0, 6).join(', ')}`
+                  : ', all characters are plain ASCII');
+}
+
 // Next occurrence of the anchor day, 00:00 UTC, strictly in the future. Capped
 // at day 28 so it exists in every month (Stripe then keeps month-end behaviour
 // consistent for later cycles).
@@ -246,4 +262,4 @@ async function resolvePrice() {
   return priceId;
 }
 
-module.exports = { PER_SITE, ANCHOR_DAY, configured, subscribed, verifyWebhook, createCheckout, portalUrl, setQuantity, getSubscription, nextAnchor, resolvePrice };
+module.exports = { PER_SITE, ANCHOR_DAY, keyInfo, configured, subscribed, verifyWebhook, createCheckout, portalUrl, setQuantity, getSubscription, nextAnchor, resolvePrice };

@@ -68,7 +68,7 @@ require('./services/cfsaas').start();       // poll Cloudflare-for-SaaS custom h
   if (!b.configured()) return;
   b.resolvePrice()
     .then((p) => console.log(`⬡ Billing: Stripe ready (per-site price ${p}, billed on day ${b.ANCHOR_DAY})`))
-    .catch((e) => console.error(`⚠ Billing misconfigured: ${e.message}`));
+    .catch((e) => console.error(`⚠ Billing misconfigured: ${e.message}\n   ${b.keyInfo()}`));
 })();
 
 // Resume apps that were running before the restart (reaping any process groups

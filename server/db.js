@@ -140,6 +140,7 @@ addColumn('wg_settings', 'uplink_enabled INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'github_token TEXT');   // encrypted account GitHub PAT
 addColumn('users', 'github_login TEXT');   // GitHub username for display
 addColumn('sites', 'not_found_html TEXT'); // optional custom 404 page (served by the edge proxy)
+addColumn('cf_hostnames', 'ssl_detail TEXT'); // issued-cert details (authority, validity) as JSON
 
 function logActivity(userId, action, detail = '') {
   db.prepare('INSERT INTO activity (user_id, action, detail) VALUES (?, ?, ?)')

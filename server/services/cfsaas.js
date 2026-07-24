@@ -196,11 +196,27 @@ function extractVerification(result) {
   return out;
 }
 
+// Pull the issued certificate's details out of a custom-hostname result so the
+// UI can show "active + the data" (authority, validity window) once Cloudflare
+// has issued the cert.
+function extractSslDetail(result) {
+  const ssl = (result && result.ssl) || {};
+  const cert = Array.isArray(ssl.certificates) && ssl.certificates[0] ? ssl.certificates[0] : {};
+  const detail = {
+    status: ssl.status || null,
+    method: ssl.method || null,
+    authority: ssl.certificate_authority || cert.issuer || null,
+    issued_on: cert.issued_on || cert.uploaded_on || cert.not_before || null,
+    expires_on: cert.expires_on || cert.not_after || ssl.expires_on || null,
+  };
+  return (detail.authority || detail.expires_on || detail.status) ? detail : null;
+}
+
 // ── DB persistence ──────────────────────────────────────────────────
 function saveHostname(siteId, hostname, result, err) {
   db.prepare(`INSERT INTO cf_hostnames
-      (site_id, hostname, cf_id, status, ssl_status, verification, cname_target, last_error, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      (site_id, hostname, cf_id, status, ssl_status, verification, cname_target, last_error, ssl_detail, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(site_id, hostname) DO UPDATE SET
       cf_id        = COALESCE(excluded.cf_id, cf_hostnames.cf_id),
       status       = excluded.status,
@@ -208,6 +224,7 @@ function saveHostname(siteId, hostname, result, err) {
       verification = COALESCE(excluded.verification, cf_hostnames.verification),
       cname_target = excluded.cname_target,
       last_error   = excluded.last_error,
+      ssl_detail   = COALESCE(excluded.ssl_detail, cf_hostnames.ssl_detail),
       updated_at   = datetime('now')`)
     .run(
       siteId, hostname,
@@ -217,6 +234,7 @@ function saveHostname(siteId, hostname, result, err) {
       result ? JSON.stringify(extractVerification(result)) : null,
       getConfig().fallbackOrigin || null,
       err || null,
+      result ? JSON.stringify(extractSslDetail(result)) : null,
     );
 }
 
@@ -225,8 +243,9 @@ function rowsForSite(siteId) {
 }
 
 function view(row) {
-  let verification = null;
+  let verification = null, ssl_detail = null;
   try { verification = row.verification ? JSON.parse(row.verification) : null; } catch { /* ignore */ }
+  try { ssl_detail = row.ssl_detail ? JSON.parse(row.ssl_detail) : null; } catch { /* ignore */ }
   return {
     hostname: row.hostname,
     cf_id: row.cf_id,
@@ -235,6 +254,7 @@ function view(row) {
     active: row.status === 'active' && row.ssl_status === 'active',
     cname_target: row.cname_target,
     verification,
+    ssl_detail,
     last_error: row.last_error,
     updated_at: row.updated_at,
   };

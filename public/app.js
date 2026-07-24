@@ -109,10 +109,18 @@
       <span style="color:${ok ? 'var(--good)' : 'var(--warn)'};font-weight:700">${ok ? '✓' : '○'}</span>
       <span style="color:var(--ink-2)">${ok ? done : pending}</span></div>`;
   }
+  const CF_CA = { lets_encrypt: "Let's Encrypt", google: 'Google Trust Services', digicert: 'DigiCert', ssl_com: 'SSL.com' };
   function cfChecklist(hn) {
+    const d = hn.ssl_detail || {};
+    const fmtDate = (s) => { if (!s) return ''; const t = new Date(s); return isNaN(t) ? '' : t.toLocaleDateString(); };
+    const ca = d.authority ? (CF_CA[d.authority] || d.authority) : '';
+    const exp = fmtDate(d.expires_on);
+    const sslDone = 'SSL certificate active'
+      + (ca ? ` — ${esc(ca)}` : '')
+      + (exp ? `, valid until ${esc(exp)}` : '');
     return `<div style="margin:.3rem 0 .5rem">
       ${cfCheck(hn.cname_detected, 'CNAME record detected in DNS', 'CNAME not added yet — add it below')}
-      ${cfCheck(hn.ssl_status === 'active', 'SSL certificate issued (auto)', 'Certificate issues automatically once the CNAME is live')}
+      ${cfCheck(hn.ssl_status === 'active', sslDone, 'Certificate issues automatically once the CNAME is live')}
     </div>`;
   }
 
@@ -1129,8 +1137,22 @@
           catch (err) { oops(err); e.target.disabled = false; }
         });
       };
-      const loadCf = () => { cfCard.querySelector('#cfbody').textContent = 'Loading…'; api(`/sites/${id}/domains/cf`).then(renderCf).catch((e) => cardError(cfCard.querySelector('#cfbody'), e.message || 'Could not load Cloudflare routing status.', loadCf)); };
-      loadCf();
+      const loadCf = () => { cfCard.querySelector('#cfbody').textContent = 'Loading…'; return api(`/sites/${id}/domains/cf`).then((d) => { renderCf(d); return d; }).catch((e) => { cardError(cfCard.querySelector('#cfbody'), e.message || 'Could not load Cloudflare routing status.', loadCf); return null; }); };
+      // While a custom domain isn't fully active, poll: pull fresh status from
+      // Cloudflare (sync) then re-render — so once the user adds the CNAME/TXT,
+      // the card flips to "active" with the issued-cert data on its own. Stops
+      // when everything is active, after ~5 min, or when the card is gone.
+      loadCf().then((first) => {
+        if (!first || !first.enabled) return;
+        if ((first.hostnames || []).length && first.hostnames.every(hn => hn.active)) return;
+        let cfPolls = 0;
+        const cfPoll = setInterval(async () => {
+          if (!document.body.contains(cfCard) || cfPolls++ > 20) return clearInterval(cfPoll);
+          try { await api(`/sites/${id}/domains/cf/sync`, { method: 'POST' }); } catch { /* keep polling */ }
+          const d = await loadCf();
+          if (d && d.hostnames && d.hostnames.length && d.hostnames.every(hn => hn.active)) clearInterval(cfPoll);
+        }, 15000);
+      });
       // Custom 404: no UI — the edge proxy automatically serves a 404.html from
       // the site's directory if the site ships one.
     }

@@ -40,6 +40,60 @@ function siteWorkDir(site, config) {
   return path.join(config.sitesDir, String(site.id), 'current');
 }
 
+// ── container runtime (opt-in, stronger isolation) ──────────────────
+let _docker; // cached availability
+function dockerBin() {
+  if (_docker !== undefined) return _docker;
+  try { execFileSync('docker', ['version', '--format', '{{.Server.Version}}'], { stdio: ['ignore', 'pipe', 'ignore'] }); _docker = 'docker'; }
+  catch { _docker = null; }
+  return _docker;
+}
+// Containerise each site when USE_CONTAINERS=1 and Docker is actually usable.
+function useContainers() { return process.env.USE_CONTAINERS === '1' && !!dockerBin(); }
+
+// Run a site's Node app inside its own Docker container: private filesystem +
+// network, CPU/memory caps. Deps are installed and the app built inside the
+// container so native modules match. The container name is hsite<id>.
+function startInContainer(site, cwd, entry) {
+  const name = `hsite${site.id}`;
+  const startCmd = site.start_cmd && site.start_cmd.trim() ? site.start_cmd : 'npm start';
+  const build = site.build_cmd && site.build_cmd.trim() ? site.build_cmd : null;
+  // Install (and build) only when node_modules is absent — the deployer clears
+  // it on each deploy, so a fresh deploy reinstalls while a plain restart skips.
+  const inner = 'set -e; if [ -f package.json ] && [ ! -d node_modules ]; then npm install --omit=dev'
+    + (build ? ` && ${build}` : '') + '; fi; exec ' + startCmd;
+  const mem = process.env.SITE_MEM || '512m';
+  const cpus = process.env.SITE_CPUS || '1';
+  const args = ['run', '-d', '--name', name, '--restart', 'unless-stopped',
+    '--memory', mem, '--cpus', cpus, '--pids-limit', '512',
+    '-v', `${cwd}:/app`, '-w', '/app',
+    '-p', `127.0.0.1:${site.app_port}:${site.app_port}`,
+    '-e', 'NODE_ENV=production', '-e', `PORT=${site.app_port}`];
+  for (const [k, v] of Object.entries(JSON.parse(site.env_vars || '{}'))) args.push('-e', `${k}=${String(v)}`);
+  args.push('node:22', 'sh', '-c', inner);
+
+  try { execFileSync('docker', ['rm', '-f', name], { stdio: 'ignore' }); } catch { /* none */ }
+  try {
+    execFileSync('docker', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+  } catch (e) {
+    appendLog(entry, `✖ container failed to start: ${String(e.stderr || e.message || '').trim()}`);
+    db.prepare("UPDATE sites SET status = 'failed', app_pid = NULL WHERE id = ?").run(site.id);
+    return entry;
+  }
+  entry.container = true;
+  db.prepare('UPDATE sites SET app_pid = NULL WHERE id = ?').run(site.id);
+  appendLog(entry, `🐳 running in container ${name} (node:22 · mem ${mem} · cpus ${cpus})`);
+  // Follow container logs into the runtime-logs buffer. Its lifetime tracks the
+  // container; Docker's restart policy supervises the app, so we don't re-launch.
+  const follower = spawn('docker', ['logs', '-f', '--tail', '500', name]);
+  entry.child = follower;
+  follower.stdout.on('data', d => appendLog(entry, d.toString()));
+  follower.stderr.on('data', d => appendLog(entry, d.toString()));
+  follower.on('error', () => {});
+  follower.on('exit', () => { if (procs.get(site.id) === entry) entry.child = null; });
+  return entry;
+}
+
 function start(site, config) {
   stop(site.id);
   const cwd = siteWorkDir(site, config);
@@ -50,7 +104,7 @@ function start(site, config) {
     PORT: String(site.app_port),
     NODE_ENV: 'production',
   };
-  const entry = { child: null, logs: [], startedAt: Date.now(), restarts: procs.get(site.id)?.restarts ?? 0 };
+  const entry = { child: null, logs: [], startedAt: Date.now(), restarts: procs.get(site.id)?.restarts ?? 0, container: false };
   procs.set(site.id, entry);
 
   // Never let a bad launch crash the platform: if the working directory is
@@ -61,7 +115,10 @@ function start(site, config) {
     return entry;
   }
 
-  // Isolate: hand the site its own user and make it own its files, then run the
+  // Strongest isolation: run in a container when enabled.
+  if (useContainers()) return startInContainer(site, cwd, entry);
+
+  // Otherwise: hand the site its own user and make it own its files, then run the
   // process as that user. If any of that fails, fall back to the platform user
   // rather than leaving the app unable to read its files.
   const siteRoot = path.join(config.sitesDir, String(site.id));
@@ -129,11 +186,18 @@ function stop(siteId) {
   const entry = procs.get(siteId);
   if (entry?.child) {
     entry.child.removeAllListeners('exit');
-    const pid = entry.child.pid;
-    try { process.kill(-pid, 'SIGTERM'); } catch { try { entry.child.kill('SIGTERM'); } catch {} }
-    setTimeout(() => { try { process.kill(-pid, 'SIGKILL'); } catch {} }, 5000).unref();
+    if (entry.container) {
+      try { entry.child.kill(); } catch { /* the log follower */ }
+    } else {
+      const pid = entry.child.pid;
+      try { process.kill(-pid, 'SIGTERM'); } catch { try { entry.child.kill('SIGTERM'); } catch {} }
+      setTimeout(() => { try { process.kill(-pid, 'SIGKILL'); } catch {} }, 5000).unref();
+    }
     entry.child = null;
   }
+  // Remove any container for this site (covers container mode and cleans up if
+  // the mode was switched off). No-op when Docker isn't installed.
+  if (dockerBin()) { try { execFileSync('docker', ['rm', '-f', `hsite${siteId}`], { stdio: 'ignore' }); } catch { /* none */ } }
   db.prepare('UPDATE sites SET app_pid = NULL WHERE id = ?').run(siteId);
 }
 
@@ -162,4 +226,4 @@ function resetRestarts(siteId) {
   if (entry) entry.restarts = 0;
 }
 
-module.exports = { start, stop, status, logs, resetRestarts, reapStale, siteWorkDir };
+module.exports = { start, stop, status, logs, resetRestarts, reapStale, siteWorkDir, useContainers };

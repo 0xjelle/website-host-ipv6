@@ -27,7 +27,7 @@ else
   BOLD='' DIM='' RED='' GRN='' YLW='' MAG='' CYN='' RST=''
 fi
 
-TOTAL=8; STEP=0
+TOTAL=9; STEP=0
 banner() {
   echo
   echo "${MAG}${BOLD}   ⬡  H o s t i n g${RST}"
@@ -101,6 +101,15 @@ if [ "$(node_major)" -ge 18 ]; then
 else
   run "Node.js installation failed" bash -c 'curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y -qq nodejs'
   ok "installed $(node --version)"
+fi
+
+step "Docker (per-site container isolation)"
+if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
+  ok "already have $(docker --version | awk '{print $3}' | tr -d ,)"
+else
+  run "Docker installation failed" bash -c 'curl -fsSL https://get.docker.com | sh'
+  systemctl enable --now docker >>"$LOG" 2>&1 || true
+  ok "installed — enable per-site containers with USE_CONTAINERS=1 in .env"
 fi
 
 step "Hosting code → $APP_DIR"

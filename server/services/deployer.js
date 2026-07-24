@@ -134,9 +134,12 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
       await ghStart(); // commit status + GitHub Deployment, now that we have the SHA
 
       const hasPkg = fs.existsSync(path.join(workDir, 'package.json'));
+      // Containerised Node apps install & build INSIDE their container (so
+      // native modules match the container OS) — skip doing it on the host.
+      const containerMode = site.type === 'node' && procman.useContainers();
 
       // 2. Install dependencies
-      if (hasPkg && (site.type === 'node' || site.build_cmd)) {
+      if (hasPkg && (site.type === 'node' || site.build_cmd) && !containerMode) {
         out('── Installing dependencies\n');
         const lockfile = fs.existsSync(path.join(workDir, 'package-lock.json'));
         const code = await sh('npm', [lockfile ? 'ci' : 'install', '--no-audit', '--no-fund'], { cwd: workDir }, out);
@@ -144,10 +147,17 @@ async function deploy(siteId, trigger = 'manual', commit = {}) {
       }
 
       // 3. Build
-      if (site.build_cmd && site.build_cmd.trim()) {
+      if (site.build_cmd && site.build_cmd.trim() && !containerMode) {
         out(`── Building: ${site.build_cmd}\n`);
         const code = await sh('/bin/sh', ['-c', site.build_cmd], { cwd: workDir, env: JSON.parse(site.env_vars || '{}') }, out);
         if (code) return finish(false, 'build failed');
+      }
+
+      // Container mode: clear any host node_modules so the container does a
+      // clean install/build for this fresh code on its next start.
+      if (containerMode) {
+        out('── Dependencies & build run inside the container\n');
+        try { fs.rmSync(path.join(workDir, 'node_modules'), { recursive: true, force: true }); } catch { /* ignore */ }
       }
 
       // 4. Start / go live

@@ -124,6 +124,17 @@ font-family:system-ui,sans-serif;background:#0b0e14;color:#e6e9f0}
 <body><div class="card"><h1>${code}</h1><h2>${title}</h2><p>${message}</p></div></body></html>`);
 }
 
+// 404 for a matched site: serve the operator's custom 404 page if they set one,
+// otherwise the default styled error page.
+function notFound(site, res) {
+  if (site && site.not_found_html) {
+    const body = Buffer.from(site.not_found_html);
+    res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': body.length });
+    return res.end(body);
+  }
+  return errorPage(res, 404, 'Not found', 'This page does not exist on this site.');
+}
+
 function serveStatic(site, req, res) {
   const workDir = path.join(procman.siteWorkDir(site, config), site.static_dir || '');
   let urlPath;
@@ -145,7 +156,7 @@ function serveStatic(site, req, res) {
       const fallback = path.join(workDir, 'index.html');
       if (fs.existsSync(fallback)) { filePath = fallback; stat = fs.statSync(fallback); }
     }
-    if (!stat) return errorPage(res, 404, 'Not found', 'This page does not exist on this site.');
+    if (!stat) return notFound(site, res);
   }
   const ext = path.extname(filePath).toLowerCase();
   res.writeHead(200, {

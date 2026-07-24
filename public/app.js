@@ -87,6 +87,21 @@
       : (hn.last_error ? '<span class="pill failed">error</span>' : `<span class="pill queued"><span class="dot"></span>${esc(hn.status || 'pending')}${hn.ssl_status ? ` · ssl ${esc(hn.ssl_status)}` : ''}</span>`);
   }
 
+  // Two-step progress for a custom hostname: is the CNAME in DNS yet, and has
+  // Cloudflare auto-issued the certificate. cname_detected is filled in by the
+  // /domains/cf endpoint's live DNS check.
+  function cfCheck(ok, done, pending) {
+    return `<div style="display:flex;gap:.5rem;align-items:center;font-size:.85rem;margin:.15rem 0">
+      <span style="color:${ok ? 'var(--good)' : 'var(--warn)'};font-weight:700">${ok ? '✓' : '○'}</span>
+      <span style="color:var(--ink-2)">${ok ? done : pending}</span></div>`;
+  }
+  function cfChecklist(hn) {
+    return `<div style="margin:.3rem 0 .5rem">
+      ${cfCheck(hn.cname_detected, 'CNAME record detected in DNS', 'CNAME not added yet — add it below')}
+      ${cfCheck(hn.ssl_status === 'active', 'SSL certificate issued (auto)', 'Certificate issues automatically once the CNAME is live')}
+    </div>`;
+  }
+
   // Shown right after a site with a custom domain is created, so the user gets
   // the DNS records to add without hunting through Settings. `cf` is the create
   // response's Cloudflare result: { enabled, hostnames:[...], fallback_origin? }.
@@ -1073,8 +1088,9 @@
         box.classList.remove('empty');
         box.innerHTML = d.hostnames.map(hn => `<div style="margin-bottom:1.1rem">
             <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.4rem"><b class="mono">${esc(hn.hostname)}</b> ${cfStatusPill(hn)}</div>
+            ${cfChecklist(hn)}
             ${hn.last_error ? `<div style="color:var(--bad);font-size:.85rem;margin-bottom:.4rem">${esc(hn.last_error)}</div>` : ''}
-            ${hn.active ? '' : `<div style="color:var(--ink-2);font-size:.85rem;margin-bottom:.4rem">Add these records at your domain's DNS provider, then it goes live automatically:</div>
+            ${hn.active ? '' : `<div style="color:var(--ink-2);font-size:.85rem;margin-bottom:.4rem">Add this record at your domain's DNS provider — just the one CNAME, no TXT:</div>
             ${cfRecordsTable(cfRecordRows(hn, d.fallback_origin))}`}
           </div>`).join('') + `<button class="btn small" id="cfsync">↻ Refresh status</button>`;
         cfCard.querySelector('#cfsync')?.addEventListener('click', async (e) => {
@@ -1084,6 +1100,36 @@
         });
       };
       api(`/sites/${id}/domains/cf`).then(renderCf).catch(() => { cfCard.querySelector('#cfbody').textContent = 'Could not load Cloudflare routing status.'; });
+
+      // ── Custom 404 page ──
+      const nf = h(`<div class="card"><h2>Custom 404 page <span class="hint">served when a page isn't found</span></h2><div id="nfbody" class="empty">Loading…</div></div>`);
+      body.appendChild(nf);
+      api(`/sites/${id}/notfound`).then(({ html }) => {
+        const box = nf.querySelector('#nfbody');
+        box.classList.remove('empty');
+        box.innerHTML = `
+          <p style="color:var(--ink-2);font-size:.9rem;margin:.2rem 0 .6rem">Upload an HTML file or paste markup — it's served (with a 404 status) for any path that doesn't exist. Stored in the platform, so it survives redeploys.</p>
+          <input type="file" id="nffile" accept=".html,text/html" style="margin-bottom:.6rem">
+          <textarea id="nfhtml" rows="6" class="mono" style="width:100%;box-sizing:border-box" placeholder="<!doctype html><title>Not found</title>…">${esc(html || '')}</textarea>
+          <div style="display:flex;gap:.6rem;margin-top:.6rem">
+            <button class="btn primary" id="nfsave">Save 404 page</button>
+            ${html ? '<button class="btn danger" id="nfclear">Remove</button>' : ''}
+          </div>`;
+        const ta = box.querySelector('#nfhtml');
+        box.querySelector('#nffile')?.addEventListener('change', (e) => {
+          const f = e.target.files[0]; if (!f) return;
+          const r = new FileReader(); r.onload = () => { ta.value = r.result; }; r.readAsText(f);
+        });
+        box.querySelector('#nfsave').addEventListener('click', async (e) => {
+          e.target.disabled = true;
+          try { await api(`/sites/${id}/notfound`, { method: 'PUT', body: { html: ta.value } }); toast('Custom 404 page saved', 'ok'); pageSiteDetail(id, 'settings'); }
+          catch (err) { oops(err); e.target.disabled = false; }
+        });
+        box.querySelector('#nfclear')?.addEventListener('click', async () => {
+          try { await api(`/sites/${id}/notfound`, { method: 'PUT', body: { html: '' } }); toast('Custom 404 page removed', 'ok'); pageSiteDetail(id, 'settings'); }
+          catch (err) { oops(err); }
+        });
+      }).catch(() => { nf.querySelector('#nfbody').textContent = 'Could not load the custom 404 page.'; });
     }
   }
 

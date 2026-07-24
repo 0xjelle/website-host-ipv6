@@ -11,7 +11,24 @@ const procman = require('../services/procman');
 const ipam = require('../services/ipam');
 const gh = require('../services/github');
 const cfsaas = require('../services/cfsaas');
+const cloudflare = require('../services/cloudflare');
+const dns = require('dns').promises;
 const { decrypt } = require('../crypto');
+
+// Has the customer actually added the CNAME yet? True if the hostname CNAMEs to
+// our fallback origin, or (CNAME-flattened) resolves to Cloudflare edge IPs.
+// Bounded so a slow/again-missing DNS lookup can't hang the request.
+async function cnameDetected(hostname, fallbackOrigin) {
+  const timeout = (p) => Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error('t')), 3000))]);
+  const cnames = await timeout(dns.resolveCname(hostname)).catch(() => []);
+  const fo = (fallbackOrigin || '').toLowerCase();
+  if (fo && cnames.some(c => c.toLowerCase().replace(/\.$/, '') === fo)) return true;
+  const [v6, v4] = await Promise.all([
+    timeout(dns.resolve6(hostname)).catch(() => []),
+    timeout(dns.resolve4(hostname)).catch(() => []),
+  ]);
+  return [...v6, ...v4].some(ip => cloudflare.isCloudflareIP(ip));
+}
 
 const repoFullName = (url) => {
   const m = String(url || '').match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?\/?$/i);
@@ -48,10 +65,11 @@ function nextAppPort() {
 }
 
 function publicView(site) {
-  const { repo_token, ...rest } = site;
+  const { repo_token, not_found_html, ...rest } = site;
   return {
     ...rest,
     has_repo_token: !!repo_token,
+    has_404: !!not_found_html,
     domains: JSON.parse(site.domains || '[]'),
     env_vars: JSON.parse(site.env_vars || '{}'),
     default_domain: `${site.slug}.${config.siteBaseDomain}`,
@@ -240,14 +258,16 @@ router.get('/:id/health', async (req, res) => {
 });
 
 // ── Cloudflare for SaaS: per-site custom-domain routing status ──────
-router.get('/:id/domains/cf', (req, res) => {
+router.get('/:id/domains/cf', async (req, res) => {
   const site = ownSite(req, res);
   if (!site) return;
-  res.json({
-    enabled: cfsaas.isEnabled(),
-    fallback_origin: cfsaas.getConfig().fallbackOrigin,
-    hostnames: cfsaas.rowsForSite(site.id).map(cfsaas.view),
-  });
+  const fallbackOrigin = cfsaas.getConfig().fallbackOrigin;
+  const hostnames = cfsaas.rowsForSite(site.id).map(cfsaas.view);
+  // Add a live "is the CNAME actually in place?" check per hostname.
+  await Promise.all(hostnames.map(async (h) => {
+    h.cname_detected = await cnameDetected(h.hostname, fallbackOrigin).catch(() => false);
+  }));
+  res.json({ enabled: cfsaas.isEnabled(), fallback_origin: fallbackOrigin, hostnames });
 });
 
 // Force a re-sync (register missing hostnames, refresh their status).
@@ -259,6 +279,23 @@ router.post('/:id/domains/cf/sync', async (req, res) => {
     await cfsaas.refreshStatuses();
     res.json(await cfsaas.syncDomainsForSite(site));
   } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// ── Custom 404 page ─────────────────────────────────────────────────
+router.get('/:id/notfound', (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  res.json({ html: site.not_found_html || '' });
+});
+
+router.put('/:id/notfound', (req, res) => {
+  const site = ownSite(req, res);
+  if (!site) return;
+  const html = req.body && typeof req.body.html === 'string' ? req.body.html : '';
+  if (html.length > 512 * 1024) return res.status(400).json({ error: 'Custom 404 page is too large (max 512 KB)' });
+  db.prepare('UPDATE sites SET not_found_html = ? WHERE id = ?').run(html || null, site.id);
+  logActivity(req.user.id, 'site.notfound', `"${site.name}" ${html ? 'set' : 'cleared'}`);
+  res.json({ ok: true, has_404: !!html });
 });
 
 // ── SSL (Let's Encrypt, DNS-01) ─────────────────────────────────────

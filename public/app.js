@@ -1776,12 +1776,16 @@
         return;
       }
       if (b.subscribed) {
+        const ord = (n) => n + (n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th');
         el.innerHTML = `
+          ${b.cancelling ? `<div class="first-user-banner" style="border-color:rgba(255,201,120,.3);background:rgba(255,201,120,.1);color:#ffd9a3">
+            Your subscription is cancelled but <b>stays active until ${b.renews_at ? fmtDate(b.renews_at) : 'the end of the paid period'}</b> - your sites keep running until then. You can resume any time from the portal.</div>` : ''}
           <div class="kv" style="margin-bottom:1rem">
             <span class="k">Plan</span><span class="v">Pay per site · ${esc(b.price_label)}</span>
-            <span class="k">Status</span><span class="v">${esc(b.status || 'active')}</span>
+            <span class="k">Status</span><span class="v">${esc(b.status || 'active')}${b.cancelling ? ' · cancels at period end' : ''}</span>
             <span class="k">Sites (billed)</span><span class="v">${b.sites_used}</span>
-            ${b.renews_at ? `<span class="k">Renews</span><span class="v">${fmtDate(b.renews_at)}</span>` : ''}
+            <span class="k">Billing day</span><span class="v">${esc(ord(b.anchor_day))} of each month</span>
+            ${b.renews_at ? `<span class="k">${b.cancelling ? 'Active until' : 'Next invoice'}</span><span class="v">${fmtDate(b.renews_at)}</span>` : ''}
           </div>
           <button class="btn" id="portal">Manage subscription</button>`;
         el.querySelector('#portal').addEventListener('click', async () => {
@@ -1791,6 +1795,7 @@
       }
       el.innerHTML = `
         <p style="color:var(--ink-2)">Hosting is <b>pay per site</b> - <b>${esc(b.price_label)}</b>. Subscribe once; every website you create is added to your bill, and deleting one lowers it automatically.</p>
+        <p style="color:var(--ink-3);font-size:.85rem">Billing runs on the <b>${esc(String(b.anchor_day))}${b.anchor_day === 1 ? 'st' : b.anchor_day === 2 ? 'nd' : b.anchor_day === 3 ? 'rd' : 'th'} of each month</b> - you only pay pro rata for the days until then. Cancel any time and your sites keep running until the end of the paid month.</p>
         ${b.status ? `<p style="color:var(--warn);font-size:.88rem">Your subscription is <b>${esc(b.status)}</b> - resubscribe below to keep hosting sites.</p>` : ''}
         <div style="display:flex;gap:.6rem;flex-wrap:wrap">
           <button class="btn primary" id="sub">Subscribe</button>

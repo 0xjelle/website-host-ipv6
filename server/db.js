@@ -164,6 +164,7 @@ addColumn('users', 'bill_subscription_id TEXT');   // provider subscription id
 addColumn('users', 'bill_customer_id TEXT');       // provider customer id (billing portal)
 addColumn('users', 'bill_item_id TEXT');           // subscription item id (per-site quantity)
 addColumn('users', 'bill_renews_at TEXT');         // next renewal timestamp
+addColumn('users', 'bill_cancel_at_period_end INTEGER NOT NULL DEFAULT 0'); // cancelled but paid until period end
 addColumn('sites', 'not_found_html TEXT'); // optional custom 404 page (served by the edge proxy)
 addColumn('cf_hostnames', 'ssl_detail TEXT'); // issued-cert details (authority, validity) as JSON
 

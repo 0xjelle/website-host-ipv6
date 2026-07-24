@@ -35,11 +35,14 @@ function saveSubscription(userId, sub) {
   const item = sub.items && sub.items.data && sub.items.data[0];
   db.prepare(`UPDATE users SET plan = 'persite', bill_status = ?, bill_subscription_id = ?,
       bill_customer_id = COALESCE(?, bill_customer_id), bill_item_id = COALESCE(?, bill_item_id),
-      bill_renews_at = ? WHERE id = ?`)
+      bill_renews_at = ?, bill_cancel_at_period_end = ? WHERE id = ?`)
     .run(sub.status || null, sub.id || null,
       typeof sub.customer === 'string' ? sub.customer : null,
       item ? item.id : null,
-      iso(sub.current_period_end), userId);
+      // When cancelling at period end Stripe keeps status 'active' and sets
+      // cancel_at_period_end; cancel_at is when hosting actually stops.
+      iso(sub.cancel_at || sub.current_period_end),
+      sub.cancel_at_period_end ? 1 : 0, userId);
 }
 
 async function handle(ev) {
@@ -69,12 +72,14 @@ async function handle(ev) {
     return;
   }
 
+  // Fires when the period actually runs out (not when the customer clicks
+  // cancel) - that's the point access should stop.
   if (ev.type === 'customer.subscription.deleted') {
     const user = findUser(obj);
     if (!user) return;
-    db.prepare("UPDATE users SET plan = 'free', bill_status = 'canceled', bill_renews_at = ? WHERE id = ?")
+    db.prepare("UPDATE users SET plan = 'free', bill_status = 'canceled', bill_cancel_at_period_end = 0, bill_renews_at = ? WHERE id = ?")
       .run(iso(obj.ended_at || obj.current_period_end), user.id);
-    logActivity(user.id, 'billing.subscription', 'canceled');
+    logActivity(user.id, 'billing.subscription', 'ended (period over)');
     return;
   }
 
@@ -89,7 +94,8 @@ const router = express.Router();
 router.use(requireAuth);
 
 router.get('/', (req, res) => {
-  const u = db.prepare('SELECT bill_status, bill_renews_at, bill_subscription_id, bill_customer_id FROM users WHERE id = ?').get(req.user.id);
+  const u = db.prepare(`SELECT bill_status, bill_renews_at, bill_subscription_id, bill_customer_id,
+    bill_cancel_at_period_end FROM users WHERE id = ?`).get(req.user.id);
   const count = db.prepare('SELECT COUNT(*) AS n FROM sites WHERE user_id = ?').get(req.user.id).n;
   res.json({
     configured: billing.configured(),
@@ -97,6 +103,8 @@ router.get('/', (req, res) => {
     has_customer: !!u.bill_customer_id,
     status: u.bill_status || null,
     renews_at: u.bill_renews_at || null,
+    cancelling: !!u.bill_cancel_at_period_end,
+    anchor_day: billing.ANCHOR_DAY,
     price_label: billing.PER_SITE.label,
     sites_used: count,
   });

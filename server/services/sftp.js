@@ -29,21 +29,35 @@ function hostKey() {
 
 const siteDir = (id) => path.join(config.sitesDir, String(id), 'current');
 
-// Resolve a virtual path for a user into what it represents.
-// "/" -> root (lists sites); "/slug/..." -> a real path inside that site.
-function resolve(userId, vpath) {
+// Resolve a virtual path into what it represents.
+//  • jailed session (logged in as email+slug): "/" IS that one site's document
+//    root — the user never sees their other sites.
+//  • unjailed session (logged in as just the email): "/" lists their sites and
+//    "/slug/..." is a path inside a site.
+function resolve(userId, vpath, jail) {
   const parts = path.posix.normalize('/' + vpath).split('/').filter(Boolean);
+  const within = (root, rel) => {
+    fs.mkdirSync(root, { recursive: true });
+    const real = path.normalize(path.join(root, rel));
+    if (real !== path.normalize(root) && !real.startsWith(path.normalize(root) + path.sep)) return null;
+    return real;
+  };
+  if (jail) {
+    const root = siteDir(jail.id);
+    const real = within(root, parts.join('/'));
+    if (real === null) return { kind: 'denied' };
+    // In a jail the site root is the top level, so writing there is allowed
+    // (atSiteRoot only blocks writes at the site-listing level, which a jail
+    // doesn't have).
+    return { kind: 'site', site: jail, root, real, atSiteRoot: false };
+  }
   if (parts.length === 0) return { kind: 'root' };
   const slug = parts[0];
   const site = db.prepare('SELECT * FROM sites WHERE slug = ? AND user_id = ?').get(slug, userId);
   if (!site) return { kind: 'missing' };
   const root = siteDir(site.id);
-  fs.mkdirSync(root, { recursive: true });
-  const rel = parts.slice(1).join('/');
-  const real = path.normalize(path.join(root, rel));
-  if (real !== path.normalize(root) && !real.startsWith(path.normalize(root) + path.sep)) {
-    return { kind: 'denied' };
-  }
+  const real = within(root, parts.slice(1).join('/'));
+  if (real === null) return { kind: 'denied' };
   return { kind: 'site', site, root, real, atSiteRoot: parts.length === 1 };
 }
 
@@ -63,12 +77,28 @@ function start() {
 
   const server = new Server({ hostKeys: [hostKey()] }, (client) => {
     let userId = null;
+    let jail = null; // when set, the session is confined to this one site
 
     client.on('authentication', (ctx) => {
       if (ctx.method !== 'password') return ctx.reject(['password']);
-      const user = db.prepare('SELECT * FROM users WHERE email = ?').get((ctx.username || '').toLowerCase());
+      // Username may be "email+slug" to confine the session to a single site.
+      // Split on the LAST '+' and only treat the suffix as a site if it looks
+      // like a slug — so plus-addressed emails (user+tag@x.com) still work.
+      let username = (ctx.username || '').trim();
+      let wantSlug = null;
+      const plus = username.lastIndexOf('+');
+      if (plus > 0 && /^[a-z0-9-]+$/.test(username.slice(plus + 1))) {
+        wantSlug = username.slice(plus + 1);
+        username = username.slice(0, plus);
+      }
+      const user = db.prepare('SELECT * FROM users WHERE email = ?').get(username.toLowerCase());
       if (!user || user.suspended || !bcrypt.compareSync(ctx.password || '', user.password_hash)) {
         return ctx.reject();
+      }
+      if (wantSlug) {
+        const site = db.prepare('SELECT * FROM sites WHERE slug = ? AND user_id = ?').get(wantSlug, user.id);
+        if (!site) return ctx.reject(); // asked for a site that isn't theirs
+        jail = site;
       }
       userId = user.id;
       ctx.accept();
@@ -94,7 +124,7 @@ function start() {
           });
 
           const doStat = (reqid, p) => {
-            const r = resolve(userId, p);
+            const r = resolve(userId, p, jail);
             if (r.kind === 'root') return sftp.attrs(reqid, attrsFor(null, true));
             if (r.kind !== 'site') return denyOrMissing(reqid, r);
             fs.stat(r.real, (err, st) => err ? sftp.status(reqid, S.NO_SUCH_FILE) : sftp.attrs(reqid, attrsFor(st)));
@@ -109,7 +139,7 @@ function start() {
           });
 
           sftp.on('OPENDIR', (reqid, p) => {
-            const r = resolve(userId, p);
+            const r = resolve(userId, p, jail);
             if (r.kind === 'root') return sftp.handle(reqid, newHandle({ dir: 'root', read: false }));
             if (r.kind !== 'site') return denyOrMissing(reqid, r);
             if (!fs.existsSync(r.real) || !fs.statSync(r.real).isDirectory()) return sftp.status(reqid, S.NO_SUCH_FILE);
@@ -139,7 +169,7 @@ function start() {
           });
 
           sftp.on('OPEN', (reqid, filename, flags, attrs) => {
-            const r = resolve(userId, filename);
+            const r = resolve(userId, filename, jail);
             if (r.kind !== 'site' || r.atSiteRoot) return denyOrMissing(reqid, r);
             const read = !!(flags & OPEN_MODE.READ);
             const write = !!(flags & (OPEN_MODE.WRITE | OPEN_MODE.APPEND | OPEN_MODE.CREAT | OPEN_MODE.TRUNC));
@@ -179,7 +209,7 @@ function start() {
           });
 
           const guardWrite = (reqid, p, fn) => {
-            const r = resolve(userId, p);
+            const r = resolve(userId, p, jail);
             if (r.kind !== 'site' || r.atSiteRoot) return denyOrMissing(reqid, r);
             fn(r);
           };
@@ -187,7 +217,7 @@ function start() {
           sftp.on('RMDIR', (reqid, p) => guardWrite(reqid, p, r => fs.rm(r.real, { recursive: true, force: true }, e => sftp.status(reqid, e ? S.FAILURE : S.OK))));
           sftp.on('REMOVE', (reqid, p) => guardWrite(reqid, p, r => fs.unlink(r.real, e => sftp.status(reqid, e ? S.FAILURE : S.OK))));
           sftp.on('RENAME', (reqid, oldP, newP) => {
-            const a = resolve(userId, oldP), b = resolve(userId, newP);
+            const a = resolve(userId, oldP, jail), b = resolve(userId, newP, jail);
             if (a.kind !== 'site' || b.kind !== 'site' || a.atSiteRoot || b.atSiteRoot) return sftp.status(reqid, S.PERMISSION_DENIED);
             fs.rename(a.real, b.real, e => sftp.status(reqid, e ? S.FAILURE : S.OK));
           });

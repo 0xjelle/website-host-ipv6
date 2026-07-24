@@ -965,13 +965,13 @@
         <div class="kv">
           <span class="k">Host</span><span class="v">${esc(site.sftp.host)}</span>
           <span class="k">Port</span><span class="v">${site.sftp.port}</span>
-          <span class="k">Username</span><span class="v">${esc(me.email)}</span>
+          <span class="k">Username</span><span class="v">${esc(me.email)}+${esc(site.slug)} <button class="cp" style="background:none;border:none;cursor:pointer;color:var(--ink-3)" onclick="_copy('${esc(me.email)}+${esc(site.slug)}', 'Username copied')" title="copy">⧉</button></span>
           <span class="k">Password</span><span class="v">your account password</span>
-          <span class="k">Your files are in</span><span class="v">/${esc(site.sftp.folder)}/</span>
+          <span class="k">Your files are in</span><span class="v">/ (you land directly in this site — no other sites are visible)</span>
         </div>
-        <div class="copybox" style="margin-top:.8rem"><code>sftp -P ${site.sftp.port} ${esc(me.email)}@${esc(site.sftp.host)}</code>
-          <button class="cp" onclick="_copy('sftp -P ${site.sftp.port} ${esc(me.email)}@${esc(site.sftp.host)}')">⧉</button></div>
-        <span class="help">After connecting, <code class="code">cd ${esc(site.sftp.folder)}</code> and drop your website files there.
+        <div class="copybox" style="margin-top:.8rem"><code>sftp -P ${site.sftp.port} ${esc(me.email)}+${esc(site.slug)}@${esc(site.sftp.host)}</code>
+          <button class="cp" onclick="_copy('sftp -P ${site.sftp.port} ${esc(me.email)}+${esc(site.slug)}@${esc(site.sftp.host)}')">⧉</button></div>
+        <span class="help">The <code class="code">+${esc(site.slug)}</code> on the username scopes the session to <b>this site only</b>. Drop your website files straight into the root.
           ${site.repo_url ? '<b>Note:</b> this site deploys from Git — a redeploy overwrites uploaded files.' : ''}</span>
       </div>`);
       body.appendChild(card);

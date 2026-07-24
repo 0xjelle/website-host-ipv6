@@ -327,9 +327,20 @@
   }
 
   // ── auth screens ────────────────────────────────────────────────
-  function renderAuth(hasUsers, resetToken) {
+  function renderAuth(hasUsers, resetToken, tsSiteKey) {
     let mode = resetToken ? 'reset' : (hasUsers ? 'login' : 'register');
     let askCode = false, pendingCreds = null; // 2FA: waiting for an authenticator code
+    let tsWidget = null;
+    const showCaptcha = () => tsSiteKey && (mode === 'login' || mode === 'register');
+    const mountTurnstile = () => {
+      if (!showCaptcha()) return;
+      const el = document.getElementById('cf-turnstile');
+      if (!el) return;
+      if (window.turnstile && window.turnstile.render) { try { tsWidget = window.turnstile.render(el, { sitekey: tsSiteKey, theme: 'dark' }); } catch { /* already rendered */ } }
+      else setTimeout(mountTurnstile, 300); // Cloudflare script still loading
+    };
+    const captchaToken = () => { try { return (tsWidget != null && window.turnstile) ? window.turnstile.getResponse(tsWidget) : undefined; } catch { return undefined; } };
+    const resetCaptcha = () => { try { if (tsWidget != null && window.turnstile) window.turnstile.reset(tsWidget); } catch {} };
     const TITLE = { login: 'Welcome back', register: 'Create your account', forgot: 'Reset your password', reset: 'Choose a new password' };
     const SUB = {
       login: 'Sign in to your hosting console.',
@@ -350,6 +361,7 @@
           : `${mode === 'register' ? `<label class="field"><span class="lbl">Name</span><input type="text" name="name" required placeholder="Jelle"></label>` : ''}
           ${mode === 'reset' ? '' : `<label class="field"><span class="lbl">Email</span><input type="email" name="email" required placeholder="you@example.com"></label>`}
           ${mode === 'forgot' ? '' : `<label class="field"><span class="lbl">${mode === 'reset' ? 'New password' : 'Password'}</span><input type="password" name="password" required minlength="${mode === 'register' || mode === 'reset' ? 8 : 1}" placeholder="••••••••"></label>`}`}
+          ${showCaptcha() ? `<div id="cf-turnstile" style="display:flex;justify-content:center;margin:.6rem 0"></div>` : ''}
           <button class="btn primary block" type="submit">${askCode ? 'Verify' : BTN[mode]}</button>
         </form>
         <p class="sub" style="margin-top:1.1rem;text-align:center">
@@ -376,7 +388,9 @@
             toast('Password updated — you can sign in now.', 'ok');
             mode = 'login'; resetToken = null; location.hash = ''; draw(); return;
           }
-          const body = (mode === 'login' && askCode) ? { ...pendingCreds, code: fd.code } : fd;
+          const body = (mode === 'login' && askCode) ? { ...pendingCreds, code: fd.code } : { ...fd };
+          const cap = captchaToken();
+          if (showCaptcha() && cap) body.captcha = cap;
           const r = await api(`/auth/${mode}`, { method: 'POST', body });
           me = r.user;
           if (r.firstUser) toast('Welcome, admin! Your console is ready.', 'ok');
@@ -384,6 +398,7 @@
           location.hash = '#/overview';
           render();
         } catch (err) {
+          resetCaptcha(); // Turnstile tokens are single-use — get a fresh one
           if (mode === 'login' && err.data && err.data.twofa) {
             pendingCreds = { email: fd.email || pendingCreds?.email, password: fd.password || pendingCreds?.password };
             if (!askCode) { askCode = true; draw(); return; } // first prompt, don't shout an error
@@ -391,6 +406,7 @@
           oops(err);
         }
       });
+      mountTurnstile();
     };
     draw();
   }
@@ -1836,14 +1852,14 @@
     // A password-reset link always shows the reset form, logged in or not.
     const resetMatch = location.hash.match(/^#\/reset\/([a-f0-9]{16,})/i);
     if (resetMatch) {
-      const { hasUsers } = await api('/auth/setup-state').catch(() => ({ hasUsers: true }));
-      return renderAuth(hasUsers, resetMatch[1]);
+      const s = await api('/auth/setup-state').catch(() => ({ hasUsers: true }));
+      return renderAuth(s.hasUsers, resetMatch[1], s.turnstile_site_key);
     }
     if (!me) {
       try { const r = await api('/auth/me'); me = r.user; }
       catch {
-        const { hasUsers } = await api('/auth/setup-state').catch(() => ({ hasUsers: true }));
-        return renderAuth(hasUsers);
+        const s = await api('/auth/setup-state').catch(() => ({ hasUsers: true }));
+        return renderAuth(s.hasUsers, null, s.turnstile_site_key);
       }
     }
     const route = location.hash.replace(/^#\//, '') || 'overview';

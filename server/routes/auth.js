@@ -6,14 +6,18 @@ const { signToken, requireAuth } = require('../auth');
 const config = require('../config');
 const mail = require('../services/mail');
 const totp = require('../services/totp');
+const turnstile = require('../services/turnstile');
 
 const router = express.Router();
 
 const cookieOpts = 'HttpOnly; Path=/; Max-Age=604800; SameSite=Lax';
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
   const { email, name, password } = req.body || {};
+  if (turnstile.configured() && !(await turnstile.verify((req.body || {}).captcha, req.ip))) {
+    return res.status(400).json({ error: 'Captcha check failed — please try again' });
+  }
   if (!email || !name || !password) return res.status(400).json({ error: 'email, name and password are required' });
   if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Invalid email address' });
@@ -35,8 +39,11 @@ router.post('/register', (req, res) => {
   }
 });
 
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { email, password } = req.body || {};
+  if (turnstile.configured() && !(await turnstile.verify((req.body || {}).captcha, req.ip))) {
+    return res.status(400).json({ error: 'Captcha check failed — please try again' });
+  }
   const row = db.prepare('SELECT * FROM users WHERE email = ?').get((email || '').toLowerCase());
   if (!row || !bcrypt.compareSync(password || '', row.password_hash)) {
     return res.status(401).json({ error: 'Invalid email or password' });
@@ -66,7 +73,10 @@ router.get('/me', requireAuth, (req, res) => {
 });
 
 router.get('/setup-state', (req, res) => {
-  res.json({ hasUsers: db.prepare('SELECT COUNT(*) AS n FROM users').get().n > 0 });
+  res.json({
+    hasUsers: db.prepare('SELECT COUNT(*) AS n FROM users').get().n > 0,
+    turnstile_site_key: turnstile.siteKey(),
+  });
 });
 
 // ── password reset ──────────────────────────────────────────────────

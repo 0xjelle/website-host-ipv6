@@ -24,7 +24,7 @@
       });
       let data = {};
       try { data = await res.json(); } catch {}
-      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      if (!res.ok) { const err = new Error(data.error || `Request failed (${res.status})`); err.data = data; err.status = res.status; throw err; }
       return data;
     } catch (e) {
       if (e.name === 'AbortError') throw new Error('Timed out — the server did not respond in 20s');
@@ -329,6 +329,7 @@
   // ── auth screens ────────────────────────────────────────────────
   function renderAuth(hasUsers, resetToken) {
     let mode = resetToken ? 'reset' : (hasUsers ? 'login' : 'register');
+    let askCode = false, pendingCreds = null; // 2FA: waiting for an authenticator code
     const TITLE = { login: 'Welcome back', register: 'Create your account', forgot: 'Reset your password', reset: 'Choose a new password' };
     const SUB = {
       login: 'Sign in to your hosting console.',
@@ -345,10 +346,11 @@
         <h1>${TITLE[mode]}</h1>
         <p class="sub">${SUB[mode]}</p>
         <form id="authform">
-          ${mode === 'register' ? `<label class="field"><span class="lbl">Name</span><input type="text" name="name" required placeholder="Jelle"></label>` : ''}
+          ${mode === 'login' && askCode ? `<label class="field"><span class="lbl">Authenticator code</span><input type="text" name="code" required inputmode="numeric" autocomplete="one-time-code" placeholder="123456 or a backup code" autofocus></label>`
+          : `${mode === 'register' ? `<label class="field"><span class="lbl">Name</span><input type="text" name="name" required placeholder="Jelle"></label>` : ''}
           ${mode === 'reset' ? '' : `<label class="field"><span class="lbl">Email</span><input type="email" name="email" required placeholder="you@example.com"></label>`}
-          ${mode === 'forgot' ? '' : `<label class="field"><span class="lbl">${mode === 'reset' ? 'New password' : 'Password'}</span><input type="password" name="password" required minlength="${mode === 'register' || mode === 'reset' ? 8 : 1}" placeholder="••••••••"></label>`}
-          <button class="btn primary block" type="submit">${BTN[mode]}</button>
+          ${mode === 'forgot' ? '' : `<label class="field"><span class="lbl">${mode === 'reset' ? 'New password' : 'Password'}</span><input type="password" name="password" required minlength="${mode === 'register' || mode === 'reset' ? 8 : 1}" placeholder="••••••••"></label>`}`}
+          <button class="btn primary block" type="submit">${askCode ? 'Verify' : BTN[mode]}</button>
         </form>
         <p class="sub" style="margin-top:1.1rem;text-align:center">
           ${mode === 'login' ? `<a href="#" id="forgot">Forgot password?</a> · No account yet? <a href="#" id="swap">Register</a>`
@@ -373,12 +375,20 @@
             toast('Password updated — you can sign in now.', 'ok');
             mode = 'login'; resetToken = null; location.hash = ''; draw(); return;
           }
-          const r = await api(`/auth/${mode}`, { method: 'POST', body: fd });
+          const body = (mode === 'login' && askCode) ? { ...pendingCreds, code: fd.code } : fd;
+          const r = await api(`/auth/${mode}`, { method: 'POST', body });
           me = r.user;
           if (r.firstUser) toast('Welcome, admin! Your console is ready.', 'ok');
+          askCode = false; pendingCreds = null;
           location.hash = '#/overview';
           render();
-        } catch (err) { oops(err); }
+        } catch (err) {
+          if (mode === 'login' && err.data && err.data.twofa) {
+            pendingCreds = { email: fd.email || pendingCreds?.email, password: fd.password || pendingCreds?.password };
+            if (!askCode) { askCode = true; draw(); return; } // first prompt, don't shout an error
+          }
+          oops(err);
+        }
       });
     };
     draw();
@@ -406,7 +416,7 @@
         <div class="spacer"></div>
         <div class="userchip">
           <div class="avatar">${esc((me.name || '?')[0].toUpperCase())}</div>
-          <div class="uinfo"><div class="uname">${esc(me.name)}</div><div class="urole">${esc(me.role)}</div></div>
+          <a class="uinfo" href="#/account" style="text-decoration:none;color:inherit"><div class="uname">${esc(me.name)}</div><div class="urole">${esc(me.role)} · account</div></a>
           <button class="logout" id="logout" title="Sign out">⏻</button>
         </div>
       </aside>
@@ -1731,6 +1741,55 @@
     });
   }
 
+  // ── account (self-service: two-factor) ─────────────────────────
+  async function pageAccount() {
+    const c = h(`<div>
+      <div class="page-head"><h1>Account</h1><div class="sub">Security for ${esc(me.email)}.</div></div>
+      <div class="card"><h2>Two-factor authentication</h2><div id="twofa" class="empty">Loading…</div></div>
+    </div>`).firstElementChild;
+    const main = shell('', c);
+    const box = () => main.querySelector('#twofa');
+    const load = () => api('/auth/2fa').then(render2fa).catch(e => cardError(box(), e.message || 'Could not load', load));
+    const render2fa = (st) => {
+      const b = box(); b.classList.remove('empty');
+      if (st.enabled) {
+        b.innerHTML = `<p style="color:var(--good)">✓ Two-factor is <b>on</b> — ${st.backup_codes_left} backup code(s) left.</p>
+          <label class="field" style="max-width:280px"><span class="lbl">Password (to turn it off)</span><input type="password" id="dpw"></label>
+          <button class="btn danger" id="disable" style="margin-top:.4rem">Disable 2FA</button>`;
+        b.querySelector('#disable').addEventListener('click', async () => {
+          try { await api('/auth/2fa/disable', { method: 'POST', body: { password: b.querySelector('#dpw').value } }); toast('Two-factor disabled', 'ok'); load(); }
+          catch (err) { oops(err); }
+        });
+        return;
+      }
+      b.innerHTML = `<p style="color:var(--ink-2)">Add a second factor with an authenticator app (Google Authenticator, 1Password, Aegis…).</p>
+        <button class="btn primary" id="setup">Set up 2FA</button>`;
+      b.querySelector('#setup').addEventListener('click', async () => {
+        try {
+          const s = await api('/auth/2fa/setup', { method: 'POST' });
+          b.innerHTML = `<p style="color:var(--ink-2)">Add this to your authenticator (paste the <b>secret</b>, or the setup URL), then enter the 6-digit code to confirm.</p>
+            <div class="kv">
+              <span class="k">Secret</span><span class="v mono">${esc(s.secret)} <button class="cp" onclick="_copy('${esc(s.secret)}')">⧉</button></span>
+              <span class="k">Setup URL</span><span class="v mono" style="word-break:break-all">${esc(s.otpauth)} <button class="cp" onclick="_copy('${esc(s.otpauth)}')">⧉</button></span>
+            </div>
+            <label class="field" style="max-width:220px;margin-top:.8rem"><span class="lbl">6-digit code</span><input type="text" id="ecode" inputmode="numeric" placeholder="123456"></label>
+            <button class="btn primary" id="enable">Enable</button>`;
+          b.querySelector('#enable').addEventListener('click', async () => {
+            try {
+              const r = await api('/auth/2fa/enable', { method: 'POST', body: { code: b.querySelector('#ecode').value } });
+              b.innerHTML = `<p style="color:var(--good)">✓ Two-factor is now on. <b>Save these backup codes</b> somewhere safe — each works once if you lose your device:</p>
+                <div class="copybox"><code style="white-space:pre-wrap;line-height:1.8">${r.backup_codes.map(esc).join('   ')}</code>
+                  <button class="cp" onclick="_copy('${r.backup_codes.join(' ')}')">⧉</button></div>
+                <button class="btn" id="done" style="margin-top:.6rem">Done</button>`;
+              b.querySelector('#done').addEventListener('click', load);
+            } catch (err) { oops(err); }
+          });
+        } catch (err) { oops(err); }
+      });
+    };
+    load();
+  }
+
   // ── router ──────────────────────────────────────────────────────
   async function render() {
     // A password-reset link always shows the reset form, logged in or not.
@@ -1757,6 +1816,7 @@
       else if (route === 'admin/users' && me.role === 'admin') await pageUsers();
       else if (route === 'admin/cloudflare' && me.role === 'admin') await pageCloudflare();
       else if (route === 'admin/system' && me.role === 'admin') await pageSystem();
+      else if (route === 'account') await pageAccount();
       else if (route === 'admin/activity' && me.role === 'admin') await pageActivity();
       else { location.hash = '#/overview'; }
     } catch (e) {

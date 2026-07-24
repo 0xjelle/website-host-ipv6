@@ -5,6 +5,7 @@ const { db, logActivity } = require('../db');
 const { signToken, requireAuth } = require('../auth');
 const config = require('../config');
 const mail = require('../services/mail');
+const totp = require('../services/totp');
 
 const router = express.Router();
 
@@ -41,6 +42,12 @@ router.post('/login', (req, res) => {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
   if (row.suspended) return res.status(403).json({ error: 'This account is suspended' });
+  // Second factor, only for accounts that turned it on (others are unaffected).
+  if (row.totp_enabled) {
+    const code = String((req.body || {}).code || '').trim();
+    if (!code) return res.status(401).json({ error: 'Enter your authenticator code', twofa: true });
+    if (!verifySecondFactor(row, code)) return res.status(401).json({ error: 'Invalid authenticator or backup code', twofa: true });
+  }
   const user = { id: row.id, email: row.email, name: row.name, role: row.role };
   logActivity(user.id, 'user.login', user.email);
   const token = signToken(user);
@@ -98,6 +105,62 @@ router.post('/reset', (req, res) => {
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(bcrypt.hashSync(String(password), 10), row.user_id);
   db.prepare('DELETE FROM password_resets WHERE user_id = ?').run(row.user_id);
   logActivity(row.user_id, 'user.reset.complete', '');
+  res.json({ ok: true });
+});
+
+// ── two-factor auth (TOTP) ──────────────────────────────────────────
+// Verify a login's second factor: a valid TOTP code, or one of the one-time
+// backup codes (which is then consumed).
+function verifySecondFactor(row, code) {
+  if (totp.verify(row.totp_secret, code)) return true;
+  let backup = [];
+  try { backup = JSON.parse(row.totp_backup || '[]'); } catch { backup = []; }
+  const h = sha256(code);
+  const idx = backup.indexOf(h);
+  if (idx === -1) return false;
+  backup.splice(idx, 1); // one-time use
+  db.prepare('UPDATE users SET totp_backup = ? WHERE id = ?').run(JSON.stringify(backup), row.id);
+  return true;
+}
+
+router.get('/2fa', requireAuth, (req, res) => {
+  const row = db.prepare('SELECT totp_enabled, totp_backup FROM users WHERE id = ?').get(req.user.id);
+  let left = 0; try { left = JSON.parse(row.totp_backup || '[]').length; } catch {}
+  res.json({ enabled: !!row.totp_enabled, backup_codes_left: left });
+});
+
+// Begin setup: generate a secret (not enabled until a code is verified).
+router.post('/2fa/setup', requireAuth, (req, res) => {
+  const row = db.prepare('SELECT totp_enabled FROM users WHERE id = ?').get(req.user.id);
+  if (row.totp_enabled) return res.status(400).json({ error: 'Two-factor is already enabled' });
+  const secret = totp.randomSecret();
+  db.prepare('UPDATE users SET totp_secret = ? WHERE id = ?').run(secret, req.user.id);
+  res.json({ secret, otpauth: totp.otpauthURL(secret, req.user.email) });
+});
+
+// Confirm setup with a code from the authenticator → enable + issue backup codes.
+router.post('/2fa/enable', requireAuth, (req, res) => {
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (row.totp_enabled) return res.status(400).json({ error: 'Two-factor is already enabled' });
+  if (!row.totp_secret) return res.status(400).json({ error: 'Start setup first' });
+  if (!totp.verify(row.totp_secret, String((req.body || {}).code || ''))) {
+    return res.status(400).json({ error: 'That code is not valid — check your authenticator and try again' });
+  }
+  const codes = Array.from({ length: 10 }, () => crypto.randomBytes(5).toString('hex'));
+  db.prepare('UPDATE users SET totp_enabled = 1, totp_backup = ? WHERE id = ?')
+    .run(JSON.stringify(codes.map(sha256)), req.user.id);
+  logActivity(req.user.id, 'user.2fa.enable', '');
+  res.json({ ok: true, backup_codes: codes });
+});
+
+// Turn off 2FA (requires the account password to confirm).
+router.post('/2fa/disable', requireAuth, (req, res) => {
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!bcrypt.compareSync(String((req.body || {}).password || ''), row.password_hash)) {
+    return res.status(403).json({ error: 'Wrong password' });
+  }
+  db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL, totp_backup = NULL WHERE id = ?').run(req.user.id);
+  logActivity(req.user.id, 'user.2fa.disable', '');
   res.json({ ok: true });
 });
 

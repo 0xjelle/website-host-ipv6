@@ -154,6 +154,9 @@ addColumn('wg_settings', 'uplink_bird TEXT');                        // provider
 addColumn('wg_settings', 'uplink_enabled INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'github_token TEXT');   // encrypted account GitHub PAT
 addColumn('users', 'github_login TEXT');   // GitHub username for display
+addColumn('users', 'totp_secret TEXT');                       // base32 TOTP secret (2FA)
+addColumn('users', 'totp_enabled INTEGER NOT NULL DEFAULT 0'); // 2FA active?
+addColumn('users', 'totp_backup TEXT');                       // JSON array of sha256(backup code)
 addColumn('sites', 'not_found_html TEXT'); // optional custom 404 page (served by the edge proxy)
 addColumn('cf_hostnames', 'ssl_detail TEXT'); // issued-cert details (authority, validity) as JSON
 
